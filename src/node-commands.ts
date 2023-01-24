@@ -6,7 +6,7 @@ import {exec} from 'child_process';
 import merge from 'deepmerge';
 import axios from 'axios';
 import {defaultConfig} from './config/default-config';
-import fs from 'fs';
+import fs, { readFileSync } from 'fs';
 import {ethers} from 'ethers';
 import {getAccountInfoParams} from './utils';
 import {BN} from 'ethereumjs-util';
@@ -101,6 +101,10 @@ if (process.env.APP_IP) {
     {arrayMerge: (target, source) => source}
   );
 }
+const dashboardPackageJson = JSON.parse(
+  readFileSync(path.join(__dirname, '../../package.json'), 'utf8')
+);
+
 
 export function registerNodeCommands(program: Command) {
   program
@@ -465,6 +469,19 @@ export function registerNodeCommands(program: Command) {
       console.log('Run the ./update.sh script in the installer root directory');
     });
 
+    program
+    .command('version')
+    .description(
+      'Shows the installed version, latest version and minimum version of the operator dashboard'
+    )
+    .action(() => {
+      console.log( yaml.dump({
+        running_version: dashboardPackageJson.version,
+        minimum_version: "1.0.0", //TODO query from some official online source
+        latest_version: "1.0.0",
+      }));
+    });
+
   const setCommand = program
     .command('set')
     .description('command to set various config parameters');
@@ -611,4 +628,6 @@ export function registerNodeCommands(program: Command) {
         }
       );
     });
+
+
 }
