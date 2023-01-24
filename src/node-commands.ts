@@ -476,9 +476,9 @@ export function registerNodeCommands(program: Command) {
     )
     .action(() => {
       console.log( yaml.dump({
-        running_version: dashboardPackageJson.version,
-        minimum_version: "1.0.0", //TODO query from some official online source
-        latest_version: "1.0.0",
+        runningVersion: dashboardPackageJson.version,
+        minimumVersion: "1.0.0", //TODO query from some official online source
+        latestVersion: "1.0.0",
       }));
     });
 
