@@ -265,7 +265,7 @@ export function registerNodeCommands(program: Command) {
         }
 
         pm2.stop('validator', err => {
-          if (err) console.log(err);
+          if (err) console.error(err);
           return pm2.disconnect();
         });
       });
@@ -343,11 +343,11 @@ export function registerNodeCommands(program: Command) {
           path.join(__dirname, '../stake.json'),
           JSON.stringify(staking, undefined, 2),
           err => {
-            if (err) console.log(err);
+            if (err) console.error(err);
           }
         );
       } catch (error) {
-        console.log(error);
+        console.error(error);
       }
     });
 
@@ -417,11 +417,11 @@ export function registerNodeCommands(program: Command) {
           path.join(__dirname, '../stake.json'),
           JSON.stringify(staking, undefined, 2),
           err => {
-            if (err) console.log(err);
+            if (err) console.error(err);
           }
         );
       } catch (error) {
-        console.log(error);
+        console.error(error);
       }
     });
 
@@ -429,29 +429,34 @@ export function registerNodeCommands(program: Command) {
     .command('reward_address')
     .description('Query the validator reward address')
     .action(() => {
-      console.log(staking.rewardAddress);
+      console.log(
+        yaml.dump({
+          reward_address: staking.rewardAddress,
+        })
+      );
     });
 
   program
     .command('stake_amount')
     .description('Query the set stake amount')
     .action(() => {
-      console.log(staking.stakeAmount);
+      console.log(
+        yaml.dump({
+          stake_amount: staking.stakeAmount,
+        })
+      );
     });
 
   program
     .command('stake_address')
     .description('Query the validator stake address')
     .action(() => {
-      console.log(staking.stakeAddress);
+      console.log(
+        yaml.dump({
+          stake_address: staking.stakeAddress,
+        })
+      );
     });
-
-  // program
-  //   .command('version')
-  //   .description('Shows my version, latest version and minimum version')
-  //   .action(() => {
-  //     //TODO interact with node
-  //   });
 
   program
     .command('update')
@@ -474,7 +479,7 @@ export function registerNodeCommands(program: Command) {
         path.join(process.cwd(), 'config.json'),
         JSON.stringify(config, undefined, 2),
         err => {
-          if (err) console.log(err);
+          if (err) console.error(err);
         }
       );
     });
@@ -489,7 +494,7 @@ export function registerNodeCommands(program: Command) {
         path.join(process.cwd(), 'config.json'),
         JSON.stringify(config, undefined, 2),
         err => {
-          if (err) console.log(err);
+          if (err) console.error(err);
         }
       );
     });
@@ -504,7 +509,7 @@ export function registerNodeCommands(program: Command) {
         path.join(process.cwd(), 'config.json'),
         JSON.stringify(config, undefined, 2),
         err => {
-          if (err) console.log(err);
+          if (err) console.error(err);
         }
       );
     });
@@ -519,7 +524,7 @@ export function registerNodeCommands(program: Command) {
         path.join(process.cwd(), 'config.json'),
         JSON.stringify(config, undefined, 2),
         err => {
-          if (err) console.log(err);
+          if (err) console.error(err);
         }
       );
     });
@@ -534,7 +539,7 @@ export function registerNodeCommands(program: Command) {
         path.join(__dirname, '../rpc-server.json'),
         JSON.stringify(rpcServer, undefined, 2),
         err => {
-          if (err) console.log(err);
+          if (err) console.error(err);
         }
       );
     });
@@ -549,7 +554,7 @@ export function registerNodeCommands(program: Command) {
         path.join(__dirname, '../rpc-server.json'),
         JSON.stringify(rpcServer, undefined, 2),
         err => {
-          if (err) console.log(err);
+          if (err) console.error(err);
         }
       );
     });
@@ -564,7 +569,7 @@ export function registerNodeCommands(program: Command) {
         path.join(__dirname, '../stake.json'),
         JSON.stringify(staking, undefined, 2),
         err => {
-          if (err) console.log(err);
+          if (err) console.error(err);
         }
       );
     });
@@ -587,7 +592,7 @@ export function registerNodeCommands(program: Command) {
         path.join(__dirname, '../stake.json'),
         JSON.stringify(staking, undefined, 2),
         err => {
-          if (err) console.log(err);
+          if (err) console.error(err);
         }
       );
     });
@@ -602,7 +607,7 @@ export function registerNodeCommands(program: Command) {
         path.join(__dirname, '../stake.json'),
         JSON.stringify(staking, undefined, 2),
         err => {
-          if (err) console.log(err);
+          if (err) console.error(err);
         }
       );
     });
