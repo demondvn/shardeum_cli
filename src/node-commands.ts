@@ -8,7 +8,11 @@ import axios from 'axios';
 import {defaultConfig} from './config/default-config';
 import fs, {readFileSync} from 'fs';
 import {ethers} from 'ethers';
-import {fetchEOADetails, getAccountInfoParams} from './utils';
+import {
+  fetchEOADetails,
+  fetchStakeParameters,
+  getAccountInfoParams,
+} from './utils';
 import {getPerformanceStatus} from './utils/performance-stats';
 const yaml = require('js-yaml');
 import {getLatestCliVersion} from './utils/project-data';
@@ -132,7 +136,7 @@ export function registerNodeCommands(program: Command) {
           return pm2.disconnect();
         }
 
-        const {stakeRequired} = await getAccountInfoParams(config, 'none');
+        const {stakeRequired} = await fetchStakeParameters(config);
         const performance = await getPerformanceStatus();
 
         if (descriptions.length === 0) {
@@ -327,10 +331,16 @@ export function registerNodeCommands(program: Command) {
         return;
       }
 
-      if (stakeValue <= 0) {
-        console.error('Stake amount must be non-zero');
+      const {stakeRequired} = await fetchStakeParameters(config);
+      if (
+        ethers.BigNumber.from(stakeRequired).gt(
+          ethers.utils.parseEther(stakeValue)
+        )
+      ) {
+        /*prettier-ignore*/ console.error(`Stake amount must be greater than ${ethers.utils.formatEther(stakeRequired)} SHM`);
         return;
       }
+
       if (!process.env.PRIV_KEY) {
         console.error(
           'Please set private key as PRIV_KEY environment variable'

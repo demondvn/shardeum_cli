@@ -66,7 +66,6 @@ export async function getAccountInfoParams(
   nodePubKey: string
 ) {
   const initParams = await fetchInitialParameters(config);
-  const stakeRequired = new BN(initParams.stakeRequired, 16).toString();
   const nodeRewardAmount = new BN(initParams.nodeRewardAmount, 16);
   const nodeRewardInterval = new BN(initParams.nodeRewardInterval);
 
@@ -87,8 +86,24 @@ export async function getAccountInfoParams(
 
   return {
     lockedStake,
-    stakeRequired,
     nominator,
     accumulatedRewards: totalReward.div(nodeRewardInterval),
+  };
+}
+
+export async function fetchStakeParameters(config: configType) {
+  const activeNode = await getActiveNode(config);
+  const url = `http://${activeNode.ip}:${activeNode.port}/stake`;
+  const stakeParams = await axios
+    .get(url)
+    .then(res => res.data)
+    .catch(err => console.error(err));
+
+  if (!stakeParams) {
+    throw new Error('Unable to fetch the staking params for the network');
+  }
+  const stakeRequired = new BN(stakeParams.stakeRequired, 16).toString();
+  return {
+    stakeRequired,
   };
 }
