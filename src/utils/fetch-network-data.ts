@@ -1,7 +1,7 @@
 import {configType} from '../config/default-config';
 import axios from 'axios';
 import {BN} from 'ethereumjs-util';
-
+axios.default.timeout = 50000;
 export const networkAccount = '0'.repeat(64);
 let savedActiveNode: {
   id: string;
