@@ -206,7 +206,7 @@ export function registerNodeCommands(program: Command) {
                 : '',
               lastActive: nodeProgress ? nodeProgress.lastActiveTime : '',
               lastRotationIndex: nodeProgress
-                ? `${nodeProgress.lastRotationIndex.idx}/${nodeProgress.lastRotationIndex.total}`
+                ? `${nodeProgress.lastRotationIndex?.idx}/${nodeProgress.lastRotationIndex?.total}`
                 : '',
               stakeRequirement: stakeRequired
                 ? ethers.utils.formatEther(stakeRequired)
