@@ -82,11 +82,12 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
     await Promise.all(
         backupFiles.map(i => get_nominator(i))
     )
+    const minvalue = (+stakeValue + 0.5)
     const lst_backup_valid = backupFiles.filter(i => !i.nominator)
     const lst_wallet_valid = walletsJson.filter(i => !i.nominee)
-    const lst_wallet_not_valid_has_money = walletsJson.filter(i => i.nominee && +(i.balanceEth || 0) > 10)
-
-    const minvalue = (+stakeValue + 0.5)
+    const lst_wallet_not_valid_has_money = walletsJson.filter(i => i.nominee && +(i.balanceEth || 0) > minvalue)
+    console.log('lst_backup_valid',lst_backup_valid.length,'lst_wallet_valid',lst_wallet_valid.length,'lst_wallet_not_valid_has_money',lst_wallet_not_valid_has_money.length)
+    
     for await (const backup of lst_backup_valid) {
         const wallet = lst_wallet_valid.pop()
         if (!wallet)
