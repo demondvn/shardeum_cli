@@ -1,5 +1,5 @@
 # shardeum_cli
 
 ## Install
-  npm i -g https://github.com/demondvn/shardeum_cli.git
+  git clone https://github.com/demondvn/shardeum_cli.git && cd shardeum_cli && npm i && npm link
   
