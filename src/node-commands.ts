@@ -304,12 +304,13 @@ export function registerNodeCommands(program: Command) {
               {
                 script: `${path.join(
                   __dirname,
-                  '../../../validator/dist/src/index.js --watch --autorestart'
+                  '../../../validator/dist/src/index.js'
                 )}`,
                 name: 'validator',
                 output: './validator-logs.txt',
                 cwd: path.join(__dirname, '../'),
-                autorestart: false, // Prevents the node from restarting if it is stopped by '/stop'
+                autorestart: true, // Prevents the node from restarting if it is stopped by '/stop'
+                // watch:true
               },
               err => {
                 if (err) console.error(err);
