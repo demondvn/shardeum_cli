@@ -6,6 +6,7 @@ import cliPackageJson = require('../package.json');
 import dotenv = require('dotenv');
 import {registerGuiCommands} from './gui-commands';
 import {registerNodeCommands} from './node-commands';
+import { registerValidatorCommands } from './validator-commands';
 
 dotenv.config();
 
@@ -21,6 +22,7 @@ registerNodeCommands(program);
 
 /** === GUI === */
 registerGuiCommands(program);
+registerValidatorCommands(program);
 
 // Run the program and parse the cli
 program.parse();

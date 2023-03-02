@@ -213,7 +213,7 @@ export function registerNodeCommands(program: Command) {
                 : '',
               nominatorAddress: nominator,
               nomineeAddress: publicKey,
-              earnings: '',
+              earnings: accumulatedRewards,
               lastPayout: '',
               lifetimeEarnings: '',
               performance,

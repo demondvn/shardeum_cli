@@ -1,0 +1,57 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        
+
+
+        // {
+        //     "type": "node",
+        //     "request": "launch",
+        //     "name": "Launch Program",
+        //     "program": "${workspaceFolder}/test.ts",
+        //     "preLaunchTask": "tsc: build - tsconfig.json",
+        //     "outFiles": ["${workspaceFolder}/out/**/*.js"]
+        //   },
+        // {
+        //     "type": "node",
+        //     "name": "Test",
+        //     "request": "launch",
+        //     "args": [
+        //         "--nolazy",
+        //         "-r",
+        //         "ts-node/register",
+        //         // "--timeout",
+        //         // "999999",
+        //         // "--colors",
+        //         // "${workspaceFolder}/**/*.spec.ts",
+        //         "${workspaceFolder}/test.ts"
+        //     ],
+        //     // "program": "ts-node ${workspaceFolder}/test.ts",
+        //     "sourceMaps": true,
+        //     "console": "integratedTerminal",
+        //     "internalConsoleOptions": "neverOpen",
+        // },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Launch Program",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "program": "${workspaceFolder}/build/src/test.js",
+            // "args": [
+            //     "stake_multi",
+            //     "10.1",
+            //     "../shardeum/wallet.json",
+            //     "../shardeum/backup"
+            // ],
+            "preLaunchTask": "tsc: build - tsconfig.json",
+            "outFiles": [
+                "${workspaceFolder}/build/**/*.js"
+            ]
+        }
+    ]
+}
