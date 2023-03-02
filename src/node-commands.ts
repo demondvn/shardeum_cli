@@ -304,9 +304,7 @@ export function registerNodeCommands(program: Command) {
               {
                 script: `${path.join(
                   __dirname,
-                  '../../../validator/dist/src/index.js',
-                  '--watch',
-                  '--autorestart'
+                  '../../../validator/dist/src/index.js --watch --autorestart'
                 )}`,
                 name: 'validator',
                 output: './validator-logs.txt',
