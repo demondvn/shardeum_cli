@@ -213,7 +213,7 @@ export function registerNodeCommands(program: Command) {
                 : '',
               nominatorAddress: nominator,
               nomineeAddress: publicKey,
-              earnings: accumulatedRewards,
+              earnings: ethers.utils.formatEther(accumulatedRewards.toString()),
               lastPayout: '',
               lifetimeEarnings: '',
               performance,
@@ -317,6 +317,7 @@ export function registerNodeCommands(program: Command) {
                 return pm2.disconnect();
               }
             );
+            
           });
         }
       );
