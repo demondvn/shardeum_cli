@@ -310,7 +310,7 @@ export function registerNodeCommands(program: Command) {
                 output: './validator-logs.txt',
                 cwd: path.join(__dirname, '../'),
                 autorestart: true, // Prevents the node from restarting if it is stopped by '/stop'
-                // watch:true
+                watch:true
               },
               err => {
                 if (err) console.error(err);
