@@ -1,19 +1,19 @@
-import {Pm2ProcessStatus, statusFromPM2} from './pm2';
+import { Pm2ProcessStatus, statusFromPM2 } from './pm2';
 import pm2 from 'pm2';
-import {Command} from 'commander';
+import { Command } from 'commander';
 import path from 'path';
-import {exec} from 'child_process';
+import { exec } from 'child_process';
 import merge from 'deepmerge';
-import {defaultConfig} from './config/default-config';
-import fs, {readFileSync} from 'fs';
-import {ethers} from 'ethers';
+import { defaultConfig } from './config/default-config';
+import fs, { readFileSync } from 'fs';
+import { ethers } from 'ethers';
 import {
   fetchEOADetails,
   getNetworkParams,
   fetchStakeParameters,
   getAccountInfoParams,
 } from './utils';
-import {getPerformanceStatus} from './utils/performance-stats';
+import { getPerformanceStatus } from './utils/performance-stats';
 const yaml = require('js-yaml');
 import {
   getInstalledGuiVersion,
@@ -21,7 +21,8 @@ import {
   getLatestGuiVersion,
   isGuiInstalled,
 } from './utils/project-data';
-import {fetchNodeProgress, getExitInformation} from './utils/fetch-node-data';
+import { fetchNodeProgress, getExitInformation } from './utils/fetch-node-data';
+import axios from 'axios';
 
 let config = defaultConfig;
 
@@ -30,7 +31,7 @@ let rpcServer = {
   port: '8080',
 };
 
-const stateMap: {[id: string]: string} = {
+const stateMap: { [id: string]: string } = {
   null: 'standby',
   syncing: 'syncing',
   active: 'active',
@@ -40,7 +41,7 @@ if (fs.existsSync(path.join(__dirname, '../config.json'))) {
   const fileConfig = JSON.parse(
     fs.readFileSync(path.join(__dirname, '../config.json')).toString()
   );
-  config = merge(config, fileConfig, {arrayMerge: (target, source) => source});
+  config = merge(config, fileConfig, { arrayMerge: (target, source) => source });
 }
 
 if (fs.existsSync(path.join(__dirname, '../rpc-server.json'))) {
@@ -69,7 +70,7 @@ if (process.env.APP_SEEDLIST) {
         },
       },
     },
-    {arrayMerge: (target, source) => source}
+    { arrayMerge: (target, source) => source }
   );
 }
 
@@ -83,7 +84,7 @@ if (process.env.APP_MONITOR) {
         },
       },
     },
-    {arrayMerge: (target, source) => source}
+    { arrayMerge: (target, source) => source }
   );
 }
 
@@ -100,7 +101,7 @@ if (process.env.APP_IP) {
         },
       },
     },
-    {arrayMerge: (target, source) => source}
+    { arrayMerge: (target, source) => source }
   );
 }
 const dashboardPackageJson = JSON.parse(
@@ -127,10 +128,10 @@ export function registerNodeCommands(program: Command) {
         }
 
         const [
-          {stakeRequired},
+          { stakeRequired },
           performance,
           nodeProgress,
-          {exitMessage, exitStatus},
+          { exitMessage, exitStatus },
         ] = await Promise.all([
           fetchStakeParameters(config),
           getPerformanceStatus(),
@@ -189,12 +190,22 @@ export function registerNodeCommands(program: Command) {
           let accumulatedRewards;
 
           if (accountInfo) {
-            ({nominator, accumulatedRewards} = accountInfo);
+            ({ nominator, accumulatedRewards } = accountInfo);
           } else {
             //prettier-ignore
-            ({nominator, accumulatedRewards} = await getAccountInfoParams(config, publicKey));
+            ({ nominator, accumulatedRewards } = await getAccountInfoParams(config, publicKey));
           }
+          const checkPortFn = async () => {
+            try {
+              await axios.get(`0:${config.server.ip.externalPort}/load`)
+              return true
+            } catch (error) {
+              return false
+            }
+           
 
+          }
+          const checkPort = await checkPortFn()
           console.log(
             yaml.dump({
               state: nodeState,
@@ -224,6 +235,7 @@ export function registerNodeCommands(program: Command) {
                 ? ethers.utils.formatEther(lockedStake)
                 : '',
               nodeInfo: nodeProgress ? nodeProgress.nodeInfo : '',
+              checkPort:checkPort
             })
           );
 
@@ -317,7 +329,7 @@ export function registerNodeCommands(program: Command) {
                 return pm2.disconnect();
               }
             );
-            
+
           });
         }
       );
@@ -373,7 +385,7 @@ export function registerNodeCommands(program: Command) {
         return;
       }
 
-      const {stakeRequired} = await fetchStakeParameters(config);
+      const { stakeRequired } = await fetchStakeParameters(config);
       if (
         ethers.BigNumber.from(stakeRequired).gt(
           ethers.utils.parseEther(stakeValue)
@@ -430,11 +442,11 @@ export function registerNodeCommands(program: Command) {
           nonce,
         };
 
-        const {hash, data, wait} = await walletWithProvider.sendTransaction(
+        const { hash, data, wait } = await walletWithProvider.sendTransaction(
           txDetails
         );
 
-        console.log('TX RECEIPT: ', {hash, data});
+        console.log('TX RECEIPT: ', { hash, data });
         const txConfirmation = await wait();
         console.log('TX CONFRIMED: ', txConfirmation);
       } catch (error) {
@@ -505,11 +517,11 @@ export function registerNodeCommands(program: Command) {
         };
         console.log(txDetails);
 
-        const {hash, data, wait} = await walletWithProvider.sendTransaction(
+        const { hash, data, wait } = await walletWithProvider.sendTransaction(
           txDetails
         );
 
-        console.log('TX RECEIPT: ', {hash, data});
+        console.log('TX RECEIPT: ', { hash, data });
         const txConfirmation = await wait();
         console.log('TX CONFRIMED: ', txConfirmation);
       } catch (error) {
@@ -523,7 +535,7 @@ export function registerNodeCommands(program: Command) {
     .action(() => {
       exec(
         'sh update.sh',
-        {cwd: path.join(__dirname, '../..')},
+        { cwd: path.join(__dirname, '../..') },
         (error, stdout, stderr) => {
           console.log(stdout);
           console.log(stderr);
@@ -535,7 +547,7 @@ export function registerNodeCommands(program: Command) {
 
       exec(
         'sh update.sh',
-        {cwd: path.join(__dirname, '../../../gui')},
+        { cwd: path.join(__dirname, '../../../gui') },
         (error, stdout, stderr) => {
           console.log(stdout);
           console.log(stderr);
