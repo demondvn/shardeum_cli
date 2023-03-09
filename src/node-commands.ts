@@ -197,7 +197,9 @@ export function registerNodeCommands(program: Command) {
           }
           const checkPortFn = async () => {
             try {
-              await axios.get(`0:${config.server.ip.externalPort}/load`)
+              await axios.get(`http://0:${config.server.ip.externalPort}/load`,{
+                timeout:1000
+              })
               return true
             } catch (error) {
               return false
