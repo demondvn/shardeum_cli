@@ -2,11 +2,11 @@ import path from 'path';
 import fs from 'fs';
 import {nodeProgressType} from '../config/default-config';
 
-export async function fetchExitSummary() {
+export function fetchExitSummary() {
   return fetchFromLog('exit-summary.json');
 }
 
-export async function fetchStartSummary() {
+export function fetchStartSummary() {
   return fetchFromLog('start-summary.json');
 }
 
@@ -15,22 +15,58 @@ export async function fetchNodeProgress(): Promise<nodeProgressType | null> {
 }
 
 export async function getExitInformation() {
-  const exitSummary = await fetchExitSummary();
-  const startSummary = await fetchStartSummary();
+  const exitSummary = fetchExitSummary();
+  const startSummary = fetchStartSummary();
   // don't show exit reason if the validator is running or was never started
   const showExitReason =
     exitSummary?.exitTime > startSummary?.startTime ||
-    (startSummary?.startTime == null && exitSummary?.exitTime != null);
+    (startSummary?.startTime === null && exitSummary?.exitTime !== null);
   const exitMessage = showExitReason ? exitSummary?.message : undefined;
   const exitStatus = showExitReason ? exitSummary?.status : undefined;
   return {exitMessage, exitStatus};
+}
+
+export function getProgressData(nodeProgress: nodeProgressType | null) {
+  if (!nodeProgress) {
+    return {
+      state: 'null',
+      totalTimeValidating: 0,
+      lastActive: '',
+      lastRotationIndex: '',
+      nodeInfo: '',
+    };
+  }
+
+  const lastRotationIndexSafe = nodeProgress.lastRotationIndex ?? {
+    idx: 0,
+    total: 0,
+  };
+  const lastActiveTimeSafe = nodeProgress.lastActiveTime ?? 0;
+
+  const startData = fetchFromLog('start-summary.json');
+  const totalTimeValidating =
+    startData.startTime < lastActiveTimeSafe ? lastActiveTimeSafe : 0;
+
+  const LastActiveDate = new Date(lastActiveTimeSafe);
+  const validatingDuration = new Date(0);
+  validatingDuration.setMilliseconds(totalTimeValidating);
+
+  return {
+    state: nodeProgress.nodeInfo.status,
+    totalTimeValidating: validatingDuration.toISOString().substring(11, 19),
+    lastActive: lastActiveTimeSafe
+      ? `${LastActiveDate.toDateString()} ${LastActiveDate.toTimeString()}`
+      : '',
+    lastRotationIndex: `${lastRotationIndexSafe.idx}/${lastRotationIndexSafe.total}`,
+    nodeInfo: nodeProgress.nodeInfo,
+  };
 }
 
 function validatorLogExists(logName: string) {
   return fs.existsSync(path.join(__dirname, `../../logs/${logName}`));
 }
 
-async function fetchFromLog(logName: string) {
+function fetchFromLog(logName: string) {
   if (!validatorLogExists(logName)) {
     return null;
   }

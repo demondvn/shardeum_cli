@@ -12,23 +12,25 @@ import {
   getNetworkParams,
   fetchStakeParameters,
   getAccountInfoParams,
+  fetchValidatorVersions,
 } from './utils';
-import { getPerformanceStatus } from './utils/performance-stats';
+import {getPerformanceStatus} from './utils/performance-stats';
 const yaml = require('js-yaml');
 import {
   getInstalledGuiVersion,
+  getInstalledValidatorVersion,
   getLatestCliVersion,
   getLatestGuiVersion,
   isGuiInstalled,
+  isValidatorInstalled,
 } from './utils/project-data';
-import { fetchNodeProgress, getExitInformation } from './utils/fetch-node-data';
+import {fetchNodeProgress, getExitInformation} from './utils/fetch-node-data';
 import axios from 'axios';
 
 let config = defaultConfig;
 
 let rpcServer = {
-  ip: 'localhost',
-  port: '8080',
+  url: 'https://sphinx.shardeum.org',
 };
 
 const stateMap: { [id: string]: string } = {
@@ -130,15 +132,14 @@ export function registerNodeCommands(program: Command) {
         const [
           { stakeRequired },
           performance,
-          nodeProgress,
-          { exitMessage, exitStatus },
+          {state, totalTimeValidating, lastRotationIndex, lastActive, nodeInfo},
+          {exitMessage, exitStatus},
         ] = await Promise.all([
           fetchStakeParameters(config),
           getPerformanceStatus(),
-          fetchNodeProgress(),
+          fetchNodeProgress().then(getProgressData),
           getExitInformation(),
         ]);
-
         // TODO: Use Promise.allSettled. Need to update nodeJs to 12.9
 
         let publicKey = '';
@@ -184,9 +185,6 @@ export function registerNodeCommands(program: Command) {
         if (status.status !== 'stopped') {
           // Node is started and active
 
-          const nodeState = nodeProgress
-            ? stateMap[nodeProgress.nodeInfo.status]
-            : 'standby';
           let accumulatedRewards;
 
           if (accountInfo) {
@@ -210,25 +208,18 @@ export function registerNodeCommands(program: Command) {
           const checkPort = await checkPortFn()
           console.log(
             yaml.dump({
-              state: nodeState,
+              state: stateMap[state], // TODO: Fetch syncing state
               exitMessage,
               exitStatus,
               totalTimeRunning: status.uptimeInSeconds,
-              totalTimeValidating: nodeProgress
-                ? nodeProgress.totalActiveTime
-                : '',
-              lastActive: nodeProgress ? nodeProgress.lastActiveTime : '',
-              lastRotationIndex: nodeProgress
-                ? `${nodeProgress.lastRotationIndex?.idx}/${nodeProgress.lastRotationIndex?.total}`
-                : '',
+              totalTimeValidating: totalTimeValidating,
+              lastActive: lastActive,
+              lastRotationIndex: lastRotationIndex,
               stakeRequirement: stakeRequired
                 ? ethers.utils.formatEther(stakeRequired)
                 : '',
               nominatorAddress: nominator,
               nomineeAddress: publicKey,
-              earnings: ethers.utils.formatEther(accumulatedRewards.toString()),
-              lastPayout: '',
-              lifetimeEarnings: '',
               performance,
               currentRewards: ethers.utils.formatEther(
                 accumulatedRewards.toString()
@@ -236,8 +227,8 @@ export function registerNodeCommands(program: Command) {
               lockedStake: lockedStake
                 ? ethers.utils.formatEther(lockedStake)
                 : '',
-              nodeInfo: nodeProgress ? nodeProgress.nodeInfo : '',
-              checkPort:checkPort
+              nodeInfo: nodeInfo,
+              // TODO: Add fetching node info when in standby
             })
           );
 
@@ -258,6 +249,11 @@ export function registerNodeCommands(program: Command) {
               ? ethers.utils.formatEther(lockedStake)
               : '',
             nominatorAddress: nominator,
+            currentRewards: accountInfo
+              ? ethers.utils.formatEther(
+                  accountInfo.accumulatedRewards.toString()
+                )
+              : '',
           })
         );
 
@@ -387,17 +383,6 @@ export function registerNodeCommands(program: Command) {
         return;
       }
 
-      const { stakeRequired } = await fetchStakeParameters(config);
-      if (
-        ethers.BigNumber.from(stakeRequired).gt(
-          ethers.utils.parseEther(stakeValue)
-        )
-      ) {
-        /*prettier-ignore*/
-        console.error(`Stake amount must be greater than ${ethers.utils.formatEther(stakeRequired)} SHM`);
-        return;
-      }
-
       if (!process.env.PRIV_KEY) {
         console.error(
           'Please set private key as PRIV_KEY environment variable'
@@ -405,16 +390,31 @@ export function registerNodeCommands(program: Command) {
         return;
       }
 
+      const provider = new ethers.providers.JsonRpcProvider(rpcServer.url);
+
+      const walletWithProvider = new ethers.Wallet(
+        process.env.PRIV_KEY,
+        provider
+      );
+
+      const [{stakeRequired}, eoaData] = await Promise.all([
+        fetchStakeParameters(config),
+        fetchEOADetails(config, walletWithProvider.address),
+      ]);
+
+      if (
+        ethers.BigNumber.from(stakeRequired).gt(
+          ethers.utils.parseEther(stakeValue)
+        )
+      ) {
+        if (eoaData === null) {
+          /*prettier-ignore*/
+          console.error(`Stake amount must be greater than ${ethers.utils.formatEther(stakeRequired)} SHM`);
+          return;
+        }
+      }
+
       try {
-        const provider = new ethers.providers.JsonRpcProvider(
-          `https://${rpcServer.ip}:${rpcServer.port}`
-        );
-
-        const walletWithProvider = new ethers.Wallet(
-          process.env.PRIV_KEY,
-          provider
-        );
-
         const [gasPrice, from, nonce] = await Promise.all([
           walletWithProvider.getGasPrice(),
           walletWithProvider.getAddress(),
@@ -470,9 +470,7 @@ export function registerNodeCommands(program: Command) {
       }
 
       try {
-        const provider = new ethers.providers.JsonRpcProvider(
-          `https://${rpcServer.ip}:${rpcServer.port}`
-        );
+        const provider = new ethers.providers.JsonRpcProvider(rpcServer.url);
 
         const walletWithProvider = new ethers.Wallet(
           process.env.PRIV_KEY,
@@ -566,10 +564,14 @@ export function registerNodeCommands(program: Command) {
       'Shows the installed version, latest version and minimum version of the operator dashboard'
     )
     .action(async () => {
+      const validatorVersions = await fetchValidatorVersions(config);
+
       let versions: any = {
         runningCliVersion: dashboardPackageJson.version,
         minimumCliVersion: '0.1.0', //TODO query from some official online source
         latestCliVersion: await getLatestCliVersion(),
+        minShardeumVersion: validatorVersions.minVersion,
+        activeShardeumVersion: validatorVersions.activeVersion,
       };
 
       if (isGuiInstalled()) {
@@ -578,6 +580,13 @@ export function registerNodeCommands(program: Command) {
           runningGuiVersion: getInstalledGuiVersion(),
           minimumGuiVersion: '0.1.0', //TODO query from some official online source
           latestGuiVersion: await getLatestGuiVersion(),
+        };
+      }
+
+      if (isValidatorInstalled()) {
+        versions = {
+          ...versions,
+          runnningValidatorVersion: getInstalledValidatorVersion(),
         };
       }
       console.log(yaml.dump(versions));
@@ -658,26 +667,11 @@ export function registerNodeCommands(program: Command) {
     });
 
   setCommand
-    .command('rpc_ip')
-    .argument('<ip>')
-    .description("Set the RPC server's IP address")
-    .action(ip => {
-      rpcServer.ip = ip;
-      fs.writeFile(
-        path.join(__dirname, '../rpc-server.json'),
-        JSON.stringify(rpcServer, undefined, 2),
-        err => {
-          if (err) console.error(err);
-        }
-      );
-    });
-
-  setCommand
-    .command('rpc_port')
-    .argument('<port>')
-    .description("Set the RPC server's port")
-    .action(port => {
-      rpcServer.port = port;
+    .command('rpc_url')
+    .argument('<url>')
+    .description("Set the RPC server's URL")
+    .action(url => {
+      rpcServer.url = url;
       fs.writeFile(
         path.join(__dirname, '../rpc-server.json'),
         JSON.stringify(rpcServer, undefined, 2),
