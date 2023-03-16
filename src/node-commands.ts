@@ -24,7 +24,7 @@ import {
   isGuiInstalled,
   isValidatorInstalled,
 } from './utils/project-data';
-import {fetchNodeProgress, getExitInformation} from './utils/fetch-node-data';
+import {fetchNodeProgress, getExitInformation, getProgressData} from './utils/fetch-node-data';
 import axios from 'axios';
 
 let config = defaultConfig;

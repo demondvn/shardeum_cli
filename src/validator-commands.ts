@@ -187,6 +187,7 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
         }
     }
     for await (const backup of backupFiles) {
+        console.log(backupFiles.indexOf(backup),"/",backupFiles.length)
         await DoStake(backup)
     }
     console.log(lst_need_shm)
