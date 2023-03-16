@@ -229,6 +229,7 @@ export function registerNodeCommands(program: Command) {
                 ? ethers.utils.formatEther(lockedStake)
                 : '',
               nodeInfo: nodeInfo,
+              checkPort
               // TODO: Add fetching node info when in standby
             })
           );
