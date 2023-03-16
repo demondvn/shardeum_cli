@@ -218,7 +218,7 @@ async function stake(stakeValue: string, wallet: Wallet, nominee: string): Promi
             stake: ethers.utils.parseEther(stakeValue).toString(),
         };
         const value = ethers.BigNumber.from(stakeData.stake);
-        console.log(stakeData);
+        // console.log(stakeData);
 
         const txDetails = {
             from,
