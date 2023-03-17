@@ -244,8 +244,8 @@ async function stake(stakeValue: string, wallet: Wallet, nominee: string): Promi
         ).catch(error => console.error(wallet.address, nominee, error.message))
 
         return true
-    } catch (error) {
-        console.error(error)
+    } catch (error:any) {
+        console.error(error.message)
         return false
         // return stake(stakeValue, wallet, nominee,)
     }
