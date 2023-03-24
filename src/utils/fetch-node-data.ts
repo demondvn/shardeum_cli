@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from 'fs';
-import {nodeProgressType} from '../config/default-config';
+import {nodeProgressType} from '../config/default-network-config';
 
 export function fetchExitSummary() {
   return fetchFromLog('exit-summary.json');
@@ -29,7 +29,7 @@ export async function getExitInformation() {
 export function getProgressData(nodeProgress: nodeProgressType | null) {
   if (!nodeProgress) {
     return {
-      state: 'null',
+      state: 'standby',
       totalTimeValidating: 0,
       lastActive: '',
       lastRotationIndex: '',
@@ -44,12 +44,18 @@ export function getProgressData(nodeProgress: nodeProgressType | null) {
   const lastActiveTimeSafe = nodeProgress.lastActiveTime ?? 0;
 
   const startData = fetchFromLog('start-summary.json');
-  const totalTimeValidating =
-    startData.startTime < lastActiveTimeSafe ? nodeProgress.totalActiveTime : 0;
+
+  if (
+    startData.startTime >
+    fs.statSync(path.join(__dirname, `../../logs/node-progress.json`)).mtimeMs
+  ) {
+    nodeProgress.totalActiveTime = 0;
+    nodeProgress.nodeInfo.status = 'standby';
+  }
 
   const LastActiveDate = new Date(lastActiveTimeSafe);
   const validatingDuration = new Date(0);
-  validatingDuration.setMilliseconds(totalTimeValidating);
+  validatingDuration.setMilliseconds(nodeProgress.totalActiveTime);
 
   return {
     state: nodeProgress.nodeInfo.status,
@@ -60,6 +66,15 @@ export function getProgressData(nodeProgress: nodeProgressType | null) {
     lastRotationIndex: `${lastRotationIndexSafe.idx}/${lastRotationIndexSafe.total}`,
     nodeInfo: nodeProgress.nodeInfo,
   };
+}
+
+export function getNodeSettings() {
+  if (!fs.existsSync(path.join(__dirname, `../../nodeConfig.json`))) {
+    return null;
+  }
+
+  const settingsData = path.join(__dirname, `../../nodeConfig.json`);
+  return JSON.parse(fs.readFileSync(settingsData).toString());
 }
 
 function validatorLogExists(logName: string) {

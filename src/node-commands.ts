@@ -4,7 +4,8 @@ import { Command } from 'commander';
 import path from 'path';
 import { exec } from 'child_process';
 import merge from 'deepmerge';
-import { defaultConfig } from './config/default-config';
+import { defaultConfig } from './config/default-network-config';
+import {defaultNodeConfig, nodeConfigType} from './config/default-node-config';
 import fs, { readFileSync } from 'fs';
 import { ethers } from 'ethers';
 import {
@@ -13,6 +14,8 @@ import {
   fetchStakeParameters,
   getAccountInfoParams,
   fetchValidatorVersions,
+  getNodeSettings,
+  fetchNodeInfo,
 } from './utils';
 import {getPerformanceStatus} from './utils/performance-stats';
 const yaml = require('js-yaml');
@@ -28,12 +31,13 @@ import {fetchNodeProgress, getExitInformation, getProgressData} from './utils/fe
 import axios from 'axios';
 
 let config = defaultConfig;
+let nodeConfig: nodeConfigType = defaultNodeConfig;
 
 let rpcServer = {
   url: 'https://sphinx.shardeum.org',
 };
 
-const stateMap: { [id: string]: string } = {
+const stateMap: {[id: string]: string} = {
   null: 'standby',
   syncing: 'syncing',
   active: 'active',
@@ -44,6 +48,15 @@ if (fs.existsSync(path.join(__dirname, '../config.json'))) {
     fs.readFileSync(path.join(__dirname, '../config.json')).toString()
   );
   config = merge(config, fileConfig, { arrayMerge: (target, source) => source });
+}
+
+if (fs.existsSync(path.join(__dirname, '../nodeConfig.json'))) {
+  const fileConfig = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '../nodeConfig.json')).toString()
+  );
+  nodeConfig = merge(nodeConfig, fileConfig, {
+    arrayMerge: (target, source) => source,
+  });
 }
 
 if (fs.existsSync(path.join(__dirname, '../rpc-server.json'))) {
@@ -74,6 +87,23 @@ if (process.env.APP_SEEDLIST) {
     },
     { arrayMerge: (target, source) => source }
   );
+}
+
+if (process.env.EXISTING_ARCHIVERS) {
+  const existingArchivers = JSON.parse(process.env.EXISTING_ARCHIVERS);
+  if (existingArchivers.length > 0) {
+    config = merge(
+      config,
+      {
+        server: {
+          p2p: {
+            existingArchivers,
+          },
+        },
+      },
+      {arrayMerge: (target, source) => source}
+    );
+  }
 }
 
 if (process.env.APP_MONITOR) {
@@ -113,6 +143,11 @@ const dashboardPackageJson = JSON.parse(
 fs.writeFileSync(
   path.join(__dirname, '../config.json'),
   JSON.stringify(config, undefined, 2)
+);
+
+fs.writeFileSync(
+  path.join(__dirname, '../nodeConfig.json'),
+  JSON.stringify(nodeConfig, undefined, 2)
 );
 
 export function registerNodeCommands(program: Command) {
@@ -210,7 +245,7 @@ export function registerNodeCommands(program: Command) {
           const checkPort = await checkPortFn()
           console.log(
             yaml.dump({
-              state: stateMap[state], // TODO: Fetch syncing state
+              state: state,
               exitMessage,
               exitStatus,
               totalTimeRunning: status.uptimeInSeconds,
@@ -297,17 +332,8 @@ export function registerNodeCommands(program: Command) {
     .command('start')
     .description('Starts the validator')
     .action(() => {
-      // Save config in current directory to be used by the validator
-      fs.writeFile(
-        path.join(__dirname, '../config.json'),
-        JSON.stringify(config, undefined, 2),
-        err => {
-          if (err) console.log(err);
-        }
-      );
-
       // Run the validators clean script
-      //TODO: Inject port numbers from config as env vars into pm2
+
       exec(
         `node ${path.join(__dirname, '../../../validator/scripts/clean.js')}`,
         () => {
@@ -326,8 +352,7 @@ export function registerNodeCommands(program: Command) {
                 name: 'validator',
                 output: './validator-logs.txt',
                 cwd: path.join(__dirname, '../'),
-                // autorestart: true, // Prevents the node from restarting if it is stopped by '/stop'
-                // watch:true
+                autorestart: false, // Prevents the node from restarting if it is stopped by '/stop'
               },
               err => {
                 if (err) console.error(err);
@@ -466,7 +491,11 @@ export function registerNodeCommands(program: Command) {
   program
     .command('unstake')
     .description('Remove staked SHM')
-    .action(async () => {
+    .option(
+      '-f, --force',
+      'Force unstake in case the node is stuck, will forfeit rewards'
+    )
+    .action(async options => {
       //TODO should we handle partial unstakes?
 
       if (!process.env.PRIV_KEY) {
@@ -509,6 +538,7 @@ export function registerNodeCommands(program: Command) {
           nominator: walletWithProvider.address.toLowerCase(),
           timestamp: Date.now(),
           nominee: eoaData.operatorAccountInfo.nominee,
+          force: options.force ?? false,
         };
         console.log(unstakeData);
 
@@ -609,6 +639,18 @@ export function registerNodeCommands(program: Command) {
       console.log(yaml.dump(networkStats));
     });
 
+  program
+    .command('node-settings')
+    .description('Display node settings')
+    .action(() => {
+      const settings = getNodeSettings();
+      console.log(
+        yaml.dump({
+          autoRestart: settings.autoRestart,
+        })
+      );
+    });
+
   const setCommand = program
     .command('set')
     .description('command to set various config parameters');
@@ -682,6 +724,28 @@ export function registerNodeCommands(program: Command) {
       fs.writeFile(
         path.join(__dirname, '../rpc-server.json'),
         JSON.stringify(rpcServer, undefined, 2),
+        err => {
+          if (err) console.error(err);
+        }
+      );
+    });
+
+  setCommand
+    .command('auto_restart')
+    .argument('<true/false>')
+    .description(
+      'To autostart the node after being rotated out. Set autostart to true or false'
+    )
+    .action((autostart: string) => {
+      const input = autostart.toLowerCase();
+      if (input !== 'true' && input !== 'false') {
+        console.error('Invalid input. Please enter true or false');
+        return;
+      }
+      nodeConfig.autoRestart = input === 'true';
+      fs.writeFile(
+        path.join(__dirname, '../nodeConfig.json'),
+        JSON.stringify(nodeConfig, undefined, 2),
         err => {
           if (err) console.error(err);
         }
