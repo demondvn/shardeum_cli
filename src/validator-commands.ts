@@ -8,9 +8,11 @@ import pm2 from 'pm2';
 const provider = new ethers.providers.JsonRpcProvider(
     `https://sphinx.shardeum.org:443`
 );
+const EXISTING_ARCHIVERS = [{ "ip": "18.194.3.6", "port": 4000, "publicKey": "758b1c119412298802cd28dbfa394cdfeecc4074492d60844cc192d632d84de3" }, { "ip": "139.144.19.178", "port": 4000, "publicKey": "840e7b59a95d3c5f5044f4bc62ab9fa94bc107d391001141410983502e3cde63" }, { "ip": "139.144.43.47", "port": 4000, "publicKey": "7af699dd711074eb96a8d1103e32b589e511613ebb0c6a789a9e8791b2b05f34" }, { "ip": "72.14.178.106", "port": 4000, "publicKey": "2db7c949632d26b87d7e7a5a4ad41c306f63ee972655121a37c5e4f52b00a542" }]
+
 async function nodelist() {
     const URL = 'archiver-sphinx.shardeum.org'
-    const res = await axios.get('http://archiver-sphinx.shardeum.org:4000/nodelist')
+    const res = await axios.get('http://18.194.3.6:4000/nodelist')
     const root = res.data as NodeList.RootObject
     return root.nodeList
 }
@@ -20,22 +22,31 @@ async function node_rpc() {
 }
 async function getNominee(rpc: string, address: string) {
     const url = `https://explorer-sphinx.shardeum.org/api/address?address=${address}&accountType=5`
+    // const host = await node_rpc()
+    // const url = `http://${host}/account/${address}&type=5`
     const res = await axios.get(url)
     const root = res.data as Account.RootObject
-    if (root.accounts)
+    if (root.success)
         return root.accounts[0].account?.operatorAccountInfo?.nominee
-    return 'error'
+    return ''
 }
 //https://explorer-sphinx.shardeum.org/api/address?address=33cc9838948e3f3f81645d7f9094a9ce5867f6a7c49a223bac165fb354664f16&accountType=9
 async function getInfoNode(rpc: string, address: string) {
     const url = `https://explorer-sphinx.shardeum.org/api/address?address=${address}&accountType=9`
+    // const host = await node_rpc()
+    // const url = `http://${host}/account/${address}&type=9`
     const res = await axios.get(url)
     const root = res.data as Account_9.RootObject
     return root
 }
 async function getBalanceEth(address: string) {
-    const balanceWei = await provider.getBalance(address)
-    return ethers.utils.formatEther(balanceWei + "")
+    try {
+        const balanceWei = await provider.getBalance(address)
+        return ethers.utils.formatEther((balanceWei + ""))
+    } catch (error) {
+        return '0'
+    }
+
 }
 async function transfer(from: Wallet, to: string, value: number) {
     const walletWithProvider = new ethers.Wallet(
@@ -82,6 +93,7 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
         ])
         wallet.nominee = nomi
         wallet.balanceEth = balance
+        
         return wallet
     }
     const get_nominator = async (backup: Backup) => {
@@ -171,12 +183,16 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
                                 }
 
                             }
+                            console.log(wallet.address,wallet.balanceEth)
                             // await unstake(wallet)
-                            const _stake = await stake(stakeValue, wallet, backup.publicKey)
-                            if (_stake)
-                                return
-                            else continue
+                            if (+(wallet.balanceEth || 0) > 10) {
 
+                                const _stake = await stake(stakeValue, wallet, backup.publicKey)
+                                if (_stake)
+                                    return
+
+                            }
+                            continue
                         } else console.log(wallet.nominee, wallet.address, 'staked')// send coin to another
                     } else return
 
@@ -371,9 +387,9 @@ export function registerValidatorCommands(program: Command) {
         .description('Deploy contract')
         .option('-b, --bytecode <bytecode>', 'Bytecode to deploy')
         .option('-w, --wallets <wallets>', 'wallet file')
-        .action((bytecode,wallets)=>{
+        .action((bytecode, wallets) => {
             const walletsJson: Wallet[] = JSON.parse(fs.readFileSync(wallets, 'utf8'));
-            deploy(bytecode,walletsJson)
+            deploy(bytecode, walletsJson)
         })
 }
 async function deploy(bytecode: string, wallets: Wallet[]) {
@@ -389,21 +405,21 @@ async function deploy(bytecode: string, wallets: Wallet[]) {
                 walletWithProvider.getAddress(),
                 walletWithProvider.getTransactionCount(),
             ]);
-            const tx ={
-                data:bytecode,
+            const tx = {
+                data: bytecode,
                 nonce,
                 from,
                 gasPrice
             }
-            const gas=await walletWithProvider.estimateGas(tx)
+            const gas = await walletWithProvider.estimateGas(tx)
             walletWithProvider.sendTransaction(tx)
-            console.log(`${wallet.address}`,'Complete')
-        } catch (error : any) {
-            console.log(`${wallet.address}`,error.message)
+            console.log(`${wallet.address}`, 'Complete')
+        } catch (error: any) {
+            console.log(`${wallet.address}`, error.message)
         }
-        
+
     }
-    
+
 
 }
 interface Wallet {
