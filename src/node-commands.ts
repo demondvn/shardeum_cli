@@ -236,7 +236,7 @@ export function registerNodeCommands(program: Command) {
               })
               return true
             } catch (error) {
-              console.error(error)
+              // console.error(error)
               return false
             }
            
