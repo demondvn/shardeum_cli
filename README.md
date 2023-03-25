@@ -1,10 +1,13 @@
 # shardeum_cli
 
 ## Install
-    apt install nodejs typescript -y
+    curl -s https://deb.nodesource.com/setup_16.x | sudo bash
+    apt install nodejs -y
     git clone https://github.com/demondvn/shardeum_cli.git 
     cd shardeum_cli 
+    npm i typescript -g
     npm i 
+    npm run compile
     npm i -g .
     npm link
 ## Auto stake
