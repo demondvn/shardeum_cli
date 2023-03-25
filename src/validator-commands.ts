@@ -93,7 +93,7 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
         ])
         wallet.nominee = nomi
         wallet.balanceEth = balance
-        
+
         return wallet
     }
     const get_nominator = async (backup: Backup) => {
@@ -153,7 +153,7 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
 
                     await get_nominee(wallet)
                     while (wallet?.nominee) {
-                        console.log(wallet.nominee, wallet.address, 'staked')
+                        // console.log(wallet.nominee, wallet.address, 'staked')
                         const balance = +(wallet.balanceEth || 0)
                         if (balance > 2)
                             lst_has_shm.push(wallet)
@@ -169,8 +169,8 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
                                 need = need > 11 ? 11 : need
                                 const sender = lst_has_shm.find(i => +(i.balanceEth || 0) > need)
                                 if (sender) {
-                                    const index = lst_has_shm.indexOf(sender)
-                                    lst_has_shm.splice(index, 1)
+                                    // const index = lst_has_shm.indexOf(sender)
+                                    // lst_has_shm.splice(index, 1)
                                     console.log('transfer', sender.address, wallet.address, need)
                                     const status = await transfer(sender, wallet.address, need)
                                     if (!status) {
@@ -178,12 +178,12 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
                                         continue
 
                                     }
-
+                                    wallet.balanceEth = '11'
 
                                 }
 
                             }
-                            console.log(wallet.address,wallet.balanceEth)
+                            // console.log(wallet.address, wallet.balanceEth)
                             // await unstake(wallet)
                             if (+(wallet.balanceEth || 0) > 10) {
 
@@ -200,15 +200,20 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
 
             } else {
                 console.log(backup.publicKey, backup.nominator, 'staked')
-                const index = walletsJson.findIndex(w => w.address.toLowerCase() == backup.nominator?.toLowerCase())
-                if (index && index > -1)
-                    walletsJson.splice(index, 1)
+                // const index = walletsJson.findIndex(w => w.address.toLowerCase() == backup.nominator?.toLowerCase())
+                // if (index && index > -1)
+                //     walletsJson.splice(index, 1)
             }
         }
     }
     for await (const backup of backupFiles) {
         console.log(backupFiles.indexOf(backup), "/", backupFiles.length)
         await DoStake(backup)
+        if (walletsJson.length == 0) {
+            console.log('Wallet is empty')
+            return
+        }
+
     }
     console.log(lst_need_shm)
 }
@@ -422,6 +427,11 @@ async function deploy(bytecode: string, wallets: Wallet[]) {
 
 
 }
+export async function claim(wallet: Wallet) {
+    const tx = {
+
+    } as ClaimRewardTX
+}
 interface Wallet {
     address: string,
     private_key: string,
@@ -433,6 +443,32 @@ interface Backup {
     publicKey: string
     nominator?: string,
     staked: boolean
+}
+export interface ClaimRewardTX extends InternalTxBase {
+    nominee: string
+    nominator: string
+    timestamp: number
+    deactivatedNodeId: string
+    nodeDeactivatedTime: number
+    sign: string//ShardusTypes.Sign
+}
+export interface InternalTxBase {
+    isInternalTx: boolean
+    internalTXType: InternalTXType
+}
+export enum InternalTXType {
+    SetGlobalCodeBytes = 0,
+    InitNetwork = 1,
+    NodeReward = 2,
+    ChangeConfig = 3,
+    ApplyChangeConfig = 4,
+    SetCertTime = 5,
+    Stake = 6,
+    Unstake = 7,
+    InitRewardTimes = 8,
+    ClaimReward = 9,
+    ChangeNetworkParam = 10,
+    ApplyNetworkParam = 11,
 }
 declare module NodeList {
 
