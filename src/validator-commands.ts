@@ -178,6 +178,7 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
                                         continue
 
                                     }
+                                    sender.balanceEth = (+(sender.balanceEth || 0) - 11)+""
                                     wallet.balanceEth = '11'
 
                                 }
