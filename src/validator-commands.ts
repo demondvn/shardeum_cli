@@ -85,7 +85,7 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
         .filter(file => path.extname(file) === '.json')
         .map(file => JSON.parse(fs.readFileSync(path.join(backup, file), 'utf8')));
 
-    const rpc = await node_rpc()
+    const rpc ='' //await node_rpc()
     const get_nominee = async (wallet: Wallet) => {
         const [nomi, balance] = await Promise.all([
             getNominee(rpc, wallet.address),
