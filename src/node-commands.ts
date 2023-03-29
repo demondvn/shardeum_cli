@@ -331,9 +331,9 @@ export function registerNodeCommands(program: Command) {
   program
     .command('start')
     .description('Starts the validator')
-    .action(() => {
+    .action(async () => {
       // Run the validators clean script
-
+      const res =await axios.get('https://ipinfo.io/ip')
       exec(
         `node ${path.join(__dirname, '../../../validator/scripts/clean.js')}`,
         () => {
@@ -353,6 +353,9 @@ export function registerNodeCommands(program: Command) {
                 output: './validator-logs.txt',
                 cwd: path.join(__dirname, '../'),
                 autorestart: false, // Prevents the node from restarting if it is stopped by '/stop'
+                env:{
+                  SERVERIP:res.data
+                }
               },
               err => {
                 if (err) console.error(err);
