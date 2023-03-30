@@ -15,7 +15,7 @@ import {
   getAccountInfoParams,
   fetchValidatorVersions,
   getNodeSettings,
-  fetchNodeInfo,
+  cache,
 } from './utils';
 import {getPerformanceStatus} from './utils/performance-stats';
 const yaml = require('js-yaml');
@@ -212,6 +212,7 @@ export function registerNodeCommands(program: Command) {
                 : '',
             })
           );
+          cache.writeMaps();
           return pm2.disconnect();
         }
 
@@ -269,7 +270,7 @@ export function registerNodeCommands(program: Command) {
               // TODO: Add fetching node info when in standby
             })
           );
-
+          cache.writeMaps();
           return pm2.disconnect();
         }
 
@@ -294,7 +295,7 @@ export function registerNodeCommands(program: Command) {
               : '',
           })
         );
-
+        cache.writeMaps();
         return pm2.disconnect();
       });
     });
@@ -313,12 +314,12 @@ export function registerNodeCommands(program: Command) {
         const eoaData = await fetchEOADetails(config, address);
         console.log(
           yaml.dump({
-            stake: eoaData.operatorAccountInfo
+            stake: eoaData?.operatorAccountInfo
               ? ethers.utils.formatEther(
                   String(parseInt(eoaData.operatorAccountInfo.stake, 16))
                 )
               : '',
-            nominee: eoaData.operatorAccountInfo
+            nominee: eoaData?.operatorAccountInfo
               ? eoaData.operatorAccountInfo.nominee
               : '',
           })
@@ -641,8 +642,14 @@ export function registerNodeCommands(program: Command) {
       'Show statistics like TPS, active nodes etc. about the network'
     )
     .action(async () => {
-      const networkStats = await getNetworkParams(config);
-      console.log(yaml.dump(networkStats));
+      pm2.describe('validator', async (err, [descriptions]) => {
+        if (!err) {
+          const networkStats = await getNetworkParams(config, descriptions);
+          console.log(yaml.dump(networkStats));
+        }
+
+        pm2.disconnect();
+      });
     });
 
   program

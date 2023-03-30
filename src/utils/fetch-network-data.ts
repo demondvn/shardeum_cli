@@ -1,10 +1,13 @@
 import {configType} from '../config/default-network-config';
 import axios from 'axios';
 import {BN} from 'ethereumjs-util';
+import {ProcessDescription} from 'pm2';
 import {Pm2ProcessStatus, statusFromPM2} from '../pm2';
 import fs from 'fs';
 import path from 'path';
+import tcache from './tcache';
 // axios.default.timeout = 50000;
+export const cache = new tcache();
 export const networkAccount = '0'.repeat(64);
 let savedActiveNode:
   | {
@@ -56,12 +59,12 @@ async function fetchDataFromNetwork(
   }
 
   const url = `http://${savedActiveNode.ip}:${savedActiveNode.port}` + query;
-  let data = await axios
-    .get(url, {timeout: 2000})
-    .then(res => res.data)
-    .catch(err => console.error(err));
+  let data = await axios.get(url, {timeout: 2000}).catch(err => {
+    // console.error(err);
+    return {data: null, status: 500};
+  });
 
-  while (callback(data) && retries--) {
+  while ((callback(data.data) || data.status === 500) && retries--) {
     try {
       await getNewActiveNode(config);
     } catch (e) {
@@ -69,13 +72,13 @@ async function fetchDataFromNetwork(
     }
 
     const url = `http://${savedActiveNode.ip}:${savedActiveNode.port}` + query;
-    data = await axios
-      .get(url, {timeout: 2000})
-      .then(res => res.data)
-      .catch(err => console.error(err));
+    data = await axios.get(url, {timeout: 2000}).catch(err => {
+      // console.error(err);
+      return {data: null, status: 500};
+    });
   }
 
-  return data;
+  return data.data;
 }
 
 /**
@@ -111,6 +114,16 @@ export async function getNewActiveNode(config: configType) {
 }
 
 export async function fetchInitialParameters(config: configType) {
+  const value = cache.get('initialParameters');
+
+  if (value) {
+    const parsedValue = JSON.parse(value);
+    return {
+      nodeRewardAmount: new BN(parsedValue.nodeRewardAmount, 16),
+      nodeRewardInterval: new BN(parsedValue.nodeRewardInterval, 16),
+    };
+  }
+
   const initialParams = await fetchDataFromNetwork(
     config,
     `/account/${networkAccount}?type=5`,
@@ -121,6 +134,12 @@ export async function fetchInitialParameters(config: configType) {
   const nodeRewardAmount = new BN(response.nodeRewardAmountUsd, 16);
   const nodeRewardInterval = new BN(response.nodeRewardInterval);
 
+  const cycleDuration = await fetchCycleDuration(config);
+  cache.set(
+    'initialParameters',
+    JSON.stringify({nodeRewardAmount, nodeRewardInterval}),
+    cycleDuration * 1000
+  );
   return {nodeRewardAmount, nodeRewardInterval};
 }
 
@@ -131,7 +150,7 @@ async function fetchNodeParameters(config: configType, nodePubKey: string) {
     data => data.account === null
   );
 
-  return nodeParams.account.data;
+  return nodeParams.account ? nodeParams.account.data : nodeParams.account;
 }
 
 async function fetchNodeLoad(config: configType) {
@@ -187,11 +206,20 @@ async function fetchNetworkStats(config: configType) {
   return networkStats;
 }
 
-export async function getNetworkParams(config: configType) {
+export async function getNetworkParams(
+  config: configType,
+  description: ProcessDescription
+) {
   const networkStats = await fetchNetworkStats(config);
   let result = {...networkStats};
+
+  // Check if description is undefined
+  if (!description) {
+    return result;
+  }
+
   try {
-    const status: Pm2ProcessStatus = statusFromPM2(config);
+    const status: Pm2ProcessStatus = statusFromPM2(description);
     if (status?.status && status.status !== 'stopped') {
       const nodeLoad = await fetchNodeLoad(config);
       const nodeTxStats = await fetchNodeTxStats(config);
@@ -207,7 +235,7 @@ export async function fetchEOADetails(config: configType, eoaAddress: string) {
   const eoaParams = await fetchDataFromNetwork(
     config,
     `/account/${eoaAddress}`,
-    data => data.account === null
+    data => data?.account == null
   );
 
   return eoaParams.account;
@@ -270,6 +298,13 @@ export async function getAccountInfoParams(
 }
 
 export async function fetchStakeParameters(config: configType) {
+  const value = cache.get('stakeParams');
+  if (value) {
+    return {
+      stakeRequired: value,
+    };
+  }
+
   const stakeParams = await fetchDataFromNetwork(
     config,
     '/stake',
@@ -277,7 +312,19 @@ export async function fetchStakeParameters(config: configType) {
   );
 
   const stakeRequired = new BN(stakeParams.stakeRequired, 16).toString();
+  const cycleDuration = await fetchCycleDuration(config);
+  cache.set('stakeParams', stakeRequired, cycleDuration * 1000);
   return {
     stakeRequired,
   };
+}
+
+export async function fetchCycleDuration(config: configType) {
+  const latestCycle = await fetchDataFromNetwork(
+    config,
+    '/sync-newest-cycle',
+    data => !data
+  );
+
+  return latestCycle.newestCycle.duration;
 }
