@@ -2,12 +2,15 @@ import axios from 'axios';
 import { Command } from 'commander';
 
 import { ethers } from 'ethers';
-import fs from 'fs'
+import fs, { stat } from 'fs'
 import path from 'path'
 import pm2 from 'pm2';
-const provider = new ethers.providers.JsonRpcProvider(
-    `https://sphinx.shardeum.org:443`
+const provider = new ethers.providers.JsonRpcProvider({
+    url:`https://sphinx.shardeum.org:443`,
+}
+    
 );
+
 const gas_plus = 2000000000
 const EXISTING_ARCHIVERS = [{ "ip": "18.194.3.6", "port": 4000, "publicKey": "758b1c119412298802cd28dbfa394cdfeecc4074492d60844cc192d632d84de3" }, { "ip": "139.144.19.178", "port": 4000, "publicKey": "840e7b59a95d3c5f5044f4bc62ab9fa94bc107d391001141410983502e3cde63" }, { "ip": "139.144.43.47", "port": 4000, "publicKey": "7af699dd711074eb96a8d1103e32b589e511613ebb0c6a789a9e8791b2b05f34" }, { "ip": "72.14.178.106", "port": 4000, "publicKey": "2db7c949632d26b87d7e7a5a4ad41c306f63ee972655121a37c5e4f52b00a542" }]
 
@@ -69,6 +72,7 @@ async function transfer(from: Wallet, to: string, value: number) {
             nonce,
 
         })
+        
         await status.wait()
         // console.log(rs)
         return true
@@ -181,15 +185,16 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
                                     // lst_has_shm.splice(index, 1)
                                     console.log('transfer', sender.address, wallet.address, need)
                                     const status = await transfer(sender, wallet.address, need)
+                                    await delay(3000)
                                     if (!status) {
                                         lst_need_shm.push(wallet.address)
-                                        await delay(3000)
+                                        // await delay(3000)
                                         continue
 
                                     }
                                     sender.balanceEth = (+(sender.balanceEth || 0) - 11) + ""
                                     wallet.balanceEth = '11'
-
+                                    // await delay(3000)
                                 }
 
                             }
