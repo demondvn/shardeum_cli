@@ -5,10 +5,11 @@ import { ethers } from 'ethers';
 import fs, { stat } from 'fs'
 import path from 'path'
 import pm2 from 'pm2';
+import cliProgress from "cli-progress"
 const provider = new ethers.providers.JsonRpcProvider({
-    url:`https://sphinx.shardeum.org:443`,
+    url: `https://sphinx.shardeum.org:443`,
 }
-    
+
 );
 
 const gas_plus = 2000000000
@@ -46,33 +47,34 @@ async function getInfoNode(rpc: string, address: string) {
 async function getBalanceEth(address: string) {
     try {
         const balanceWei = await provider.getBalance(address)
-        return ethers.utils.formatEther((balanceWei + ""))
+        return +ethers.utils.formatEther((balanceWei + ""))
     } catch (error) {
-        return '0'
+        return 0
     }
 
 }
-async function transfer(from: Wallet, to: string, value: number) {
+async function transfer(from: Wallet, to: string, value: number, nonce: number | null = null) {
     const walletWithProvider = new ethers.Wallet(
         from.private_key,
         provider
     );
     try {
-        const [nonce,gasPrice] = await Promise.all([
+        const [_nonce, gasPrice] = await Promise.all([
             walletWithProvider.getTransactionCount(from.address),
             walletWithProvider.getGasPrice()
         ])
+        nonce = nonce || _nonce
         // const gasPrice = 10000000000
         const status = await walletWithProvider.sendTransaction({
             to,
             value: ethers.utils.parseEther(value + ""),
-            gasPrice:+gasPrice+gas_plus,
+            gasPrice: +gasPrice + gas_plus,
             gasLimit: 30000,
             from: from.address,
             nonce,
 
         })
-        
+
         await status.wait()
         // console.log(rs)
         return true
@@ -88,151 +90,185 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
     // Load all JSON files in backup folder
     const backupFiles: Backup[] = fs.readdirSync(backup)
         .filter(file => path.extname(file) === '.json')
-        .map(file => JSON.parse(fs.readFileSync(path.join(backup, file), 'utf8')));
+        .map(file => {
+            const bk = JSON.parse(fs.readFileSync(path.join(backup, file), 'utf8'))
+            bk.fileName = file
+            return bk
+        });
 
     const rpc = '' //await node_rpc()
     const get_nominee = async (wallet: Wallet) => {
-        const [nomi, balance] = await Promise.all([
-            getNominee(rpc, wallet.address),
-            getBalanceEth(wallet.address)
-        ])
-        wallet.nominee = nomi
-        wallet.balanceEth = balance
-
+        try {
+            const [nomi, balance] = await Promise.all([
+                getNominee(rpc, wallet.address),
+                getBalanceEth(wallet.address)
+            ])
+            wallet.nominee = nomi
+            wallet.balanceEth = +balance
+        } catch (error) {
+        }
         return wallet
     }
     const get_nominator = async (backup: Backup) => {
-        const nominator = await getInfoNode(rpc, backup.publicKey)
-        if (nominator.success)
-            backup.nominator = nominator?.accounts[0]?.account?.nominator
+        try {
+            const nominator = await getInfoNode(rpc, backup.publicKey)
+            if (nominator.success)
+                backup.nominator = nominator?.accounts[0]?.account?.nominator
+        } catch (error) {
+
+        }
+
         // backup.staked = !!nominator?.accounts[0]?.account
         return backup
     }
-    // await Promise.all(
-    //     walletsJson.map(i => get_nominee(i)))
-
-    // await Promise.all(
-    //     backupFiles.map(i => get_nominator(i))
-    // )
-    const minvalue = 11
-    // const lst_backup_valid = backupFiles.filter(i => !i.nominator)
-    // const lst_wallet_valid = walletsJson.filter(i => !i.nominee )
-    // const lst_wallet_not_valid_has_money = walletsJson.filter(i => i.nominee && +(i.balanceEth || 0) > minvalue)
-    // console.log('lst_backup_valid', lst_backup_valid.length, 'lst_wallet_valid', lst_wallet_valid.length, 'lst_wallet_not_valid_has_money', lst_wallet_not_valid_has_money.length)
-    // debugger
-    // for await (const backup of lst_backup_valid) {
-    //     const wallet = lst_wallet_valid.shift()
-    //     if (!wallet)
-    //         continue
-    //     if (+(wallet?.balanceEth || 0) < minvalue) {
-    //         const sender = lst_wallet_not_valid_has_money.shift() as Wallet
-    //         if (sender) {
-    //             console.log('send', minvalue, sender.address, wallet?.address)
-    //             const balanceEth = +(wallet?.balanceEth || 0)
-    //             const needMore = minvalue - balanceEth +1 
-    //             if(! await transfer(sender, wallet.address, needMore))
-    //                 continue
-
-    //         }
-    //         const balance = await getBalanceEth(wallet.address)
-    //         if (+balance < minvalue) {
-    //             continue
-    //         }
-    //     }
-    //     const status=await stake(stakeValue, wallet, backup.publicKey, 0)
-    //     if(!status)
-    //         lst_wallet_valid.push(wallet)
-
-
-    //     // await new Promise(f => setTimeout(f, 3000));
-    // }
-    const lst_has_shm: Wallet[] = []
+    const lead_wallet = walletsJson[0]
     const lst_need_shm: string[] = []
+    const lst_bk_error: string[] = []
+    const shift_wallet = async () => {
+        const wallet = walletsJson.shift()
+        const index = wallet_length - walletsJson.length
+
+
+        if (wallet) {
+            await get_nominee(wallet)
+        }
+        wl_bar.update(index, {
+            task: wallet?.address + " | Balance: " + wallet?.balanceEth + ` | Staked: ${wallet?.nominee ? true : false}`
+        })
+        return wallet
+    }
     const DoStake = async (backup: Backup) => {
         while (!backup.nominator) {
             await get_nominator(backup)
             if (!backup.nominator) {
 
-                let wallet = walletsJson.shift()
+                let wallet = await shift_wallet()
                 if (wallet) {
 
-                    await get_nominee(wallet)
+                    // await get_nominee(wallet)
+
                     while (wallet?.nominee) {
                         // console.log(wallet.nominee, wallet.address, 'staked')
                         const balance = +(wallet.balanceEth || 0)
-                        if (balance > 1) {
-                            if (lst_has_shm.length)
-                                transfer(wallet, lst_has_shm[0].address, balance - 1)
-                            else
-                                lst_has_shm.push(wallet)
+                        if (balance > 1 && wallet.address != lead_wallet.address) {
+                            // if (lst_has_shm.length)
+                            transfer(wallet, lead_wallet.address, balance - 1)
+                            // else
+                            // lst_has_shm.push(wallet)
                         }
 
 
 
-                        wallet = walletsJson.shift()
+                        wallet = await shift_wallet()
                     }
-
+                    if (wallet && wallet.address && wallet.nominee == undefined)
+                        wallet.nominee = await getNominee(rpc, wallet.address)
 
                     if (wallet) {
-                        if (!wallet?.nominee) {
+                        if (!wallet.nominee) {
+                            const need = 11
                             const balance = +(wallet.balanceEth || 0)
-                            if (balance < 10 && lst_has_shm.length) {
-                                // let need = minvalue - balance + 1
-                                let need = 11
-                                const sender = lst_has_shm.find(i => +(i.balanceEth || 0) > need)
+                            const leadBalance = await getBalanceEth(lead_wallet.address)
+                            if (balance < 10 && leadBalance > need) {
+                                const sender = lead_wallet
                                 if (sender) {
-                                    // const index = lst_has_shm.indexOf(sender)
-                                    // lst_has_shm.splice(index, 1)
                                     console.log('transfer', sender.address, wallet.address, need)
                                     const status = await transfer(sender, wallet.address, need)
-                                    await delay(3000)
+                                    // await delay(3000)
                                     if (!status) {
                                         lst_need_shm.push(wallet.address)
-                                        // await delay(3000)
                                         continue
-
                                     }
-                                    sender.balanceEth = (+(sender.balanceEth || 0) - 11) + ""
-                                    wallet.balanceEth = '11'
-                                    // await delay(3000)
+                                    sender.balanceEth = (sender.balanceEth - need)
+                                    wallet.balanceEth = need
                                 }
 
                             }
                             // console.log(wallet.address, wallet.balanceEth)
                             // await unstake(wallet)
-                            if (+(wallet.balanceEth || 0) > 10) {
+                            if (wallet.balanceEth > 10) {
 
                                 const _stake = await stake(stakeValue, wallet, backup.publicKey)
                                 if (_stake)
                                     return
+                                else lst_bk_error.push(backup.fileName)
 
+                            } else {
+                                lst_need_shm.push(wallet.address)
                             }
                             continue
-                        } else console.log(wallet.nominee, wallet.address, 'staked')// send coin to another
+                        } //else console.log(wallet.nominee, wallet.address, 'staked')// send coin to another
                     } else return
 
                 } else return
 
             } else {
-                console.log(backup.publicKey, backup.nominator, 'staked')
+                // console.log(backup.publicKey, backup.nominator, 'staked')
                 const index = walletsJson.findIndex(w => w.address.toLowerCase() == backup.nominator?.toLowerCase())
-                if (index && index > -1){
-                    
+                if (index && index > -1) {
+                    const wallet = walletsJson[index]
+                    const balance = await getBalanceEth(wallet.address)
+                    if (balance > 1 && wallet.address != lead_wallet.address) {
+                        transfer(wallet, lead_wallet.address, balance - 1)
+
+                    }
+                    walletsJson.splice(index, 1)
+                    const _index = wallet_length - walletsJson.length
+                    wl_bar.update(_index, {
+                        task: wallet?.address
+                    })
                 }
                 //     walletsJson.splice(index, 1)
             }
         }
     }
+
+    const multibar = new cliProgress.MultiBar({
+        clearOnComplete: false,
+        hideCursor: true,
+        format: ' {bar} | {value}/{total} | {task} ',
+    }, cliProgress.Presets.shades_grey);
+    const backup_length = backupFiles.length
+    const wallet_length = walletsJson.length
+    const bk_bar = multibar.create(backup_length, 0);
+    const wl_bar = multibar.create(wallet_length, 0);
+
+
+    bk_bar.update(0, {
+        task: "Backups"
+    })
+    wl_bar.update(0, {
+        task: "Wallets"
+    })
+
     for await (const backup of backupFiles) {
-        console.log(backupFiles.indexOf(backup), "/", backupFiles.length)
-        await DoStake(backup)
-        if (walletsJson.length == 0) {
-            console.log('Wallet is empty')
-            return
+        bk_bar.increment({
+            task: backup.fileName
+        })
+       
+        if (walletsJson.length) {
+            await DoStake(backup)
         }
 
     }
-    console.log(lst_need_shm)
+
+    console.log()
+    // console.log('List wallet balance == 0', lst_need_shm)
+    // console.log('Transfer SHM')
+    // let [leadBalance, nonce] = await Promise.all([
+    //     getBalanceEth(lead_wallet.address),
+    //     provider.getTransactionCount(lead_wallet.address)
+    // ])
+    // console.log('Balance SHM', leadBalance)
+    // for await (const addr of lst_need_shm) {
+    //     if (leadBalance > 11) {
+    //         transfer(lead_wallet, addr, 11, nonce++)
+    //         leadBalance -= 11
+    //     }
+    // }
+    console.log('List backup file error',
+        lst_bk_error)
+    multibar.stop();
 }
 const delay = (timeout: number) => {
     return new Promise((res) => {
@@ -272,7 +308,7 @@ async function stake(stakeValue: string, wallet: Wallet, nominee: string): Promi
         const txDetails = {
             from,
             to: '0x0000000000000000000000000000000000000001',
-            gasPrice:+gasPrice+gas_plus,
+            gasPrice: +gasPrice + gas_plus,
             gasLimit: 30000000,
             value,
             data: ethers.utils.hexlify(
@@ -280,7 +316,7 @@ async function stake(stakeValue: string, wallet: Wallet, nominee: string): Promi
             ),
             nonce,
         };
-        const gas = await walletWithProvider.estimateGas(txDetails)
+        // const gas = await walletWithProvider.estimateGas(txDetails)
         // debugger
         const { hash, data, wait } = await walletWithProvider.sendTransaction(
             txDetails
@@ -297,6 +333,11 @@ async function stake(stakeValue: string, wallet: Wallet, nominee: string): Promi
         console.error(error.message)
         if ((error.message + "").indexOf("This node is already staked") != -1)
             return true
+        else if ((error.message + "").indexOf("Maximum load exceeded") != -1) {
+            console.info("Wait 30s to continue")
+            await delay(30000)
+        }
+
         return false
         // return stake(stakeValue, wallet, nominee,)
     }
@@ -460,13 +501,14 @@ interface Wallet {
     address: string,
     private_key: string,
     nominee?: string,
-    balanceEth?: string
+    balanceEth: number
 }
 interface Backup {
     secretKey: string,
     publicKey: string
     nominator?: string,
-    staked: boolean
+    staked: boolean,
+    fileName: string
 }
 export interface ClaimRewardTX extends InternalTxBase {
     nominee: string
