@@ -78,7 +78,11 @@ async function transfer(from: Wallet, to: string, value: number, nonce: number |
         await status.wait()
         // console.log(rs)
         return true
-    } catch (error) {
+    } catch (error:any) {
+        if ((error.message + "").indexOf("Maximum load exceeded") != -1) {
+            console.info("Wait 30s to continue")
+            await delay(30000)
+        }
         console.error(error)
     }
     return false
