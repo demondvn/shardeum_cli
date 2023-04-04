@@ -156,7 +156,7 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
                         const balance = +(wallet.balanceEth || 0)
                         if (balance > 1 && wallet.address != lead_wallet.address) {
                             // if (lst_has_shm.length)
-                            transfer(wallet, lead_wallet.address, balance - 1)
+                           await transfer(wallet, lead_wallet.address, balance - 1)
                             // else
                             // lst_has_shm.push(wallet)
                         }
