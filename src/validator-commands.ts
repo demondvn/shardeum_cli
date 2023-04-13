@@ -6,6 +6,8 @@ import fs, { stat } from 'fs'
 import path from 'path'
 import pm2 from 'pm2';
 import cliProgress from "cli-progress"
+import { exec } from 'child_process';
+
 const provider = new ethers.providers.JsonRpcProvider({
     url: `https://sphinx.shardeum.org:443`,
 }
@@ -13,8 +15,20 @@ const provider = new ethers.providers.JsonRpcProvider({
 );
 
 const gas_plus = 2000000000
+let _gasPrice = ''
+const getGasPrice = async () => {
+    if (!_gasPrice) {
+        const gasP = await provider.getGasPrice()
+        _gasPrice = gasP.toString()
+    }
+    return _gasPrice
+}
 const EXISTING_ARCHIVERS = [{ "ip": "18.194.3.6", "port": 4000, "publicKey": "758b1c119412298802cd28dbfa394cdfeecc4074492d60844cc192d632d84de3" }, { "ip": "139.144.19.178", "port": 4000, "publicKey": "840e7b59a95d3c5f5044f4bc62ab9fa94bc107d391001141410983502e3cde63" }, { "ip": "139.144.43.47", "port": 4000, "publicKey": "7af699dd711074eb96a8d1103e32b589e511613ebb0c6a789a9e8791b2b05f34" }, { "ip": "72.14.178.106", "port": 4000, "publicKey": "2db7c949632d26b87d7e7a5a4ad41c306f63ee972655121a37c5e4f52b00a542" }]
+async function get_archiver() {
+    const lst = await Promise.all(EXISTING_ARCHIVERS.map(i => {
 
+    }))
+}
 async function nodelist() {
     const URL = 'archiver-sphinx.shardeum.org'
     const res = await axios.get('http://18.194.3.6:4000/nodelist')
@@ -53,7 +67,7 @@ async function getBalanceEth(address: string) {
     }
 
 }
-async function transfer(from: Wallet, to: string, value: number, nonce: number | null = null) {
+async function transfer(from: Wallet, to: string, value: number, nonce: number | null = null,waiting=true) {
     const walletWithProvider = new ethers.Wallet(
         from.private_key,
         provider
@@ -61,7 +75,7 @@ async function transfer(from: Wallet, to: string, value: number, nonce: number |
     try {
         const [_nonce, gasPrice] = await Promise.all([
             walletWithProvider.getTransactionCount(from.address),
-            walletWithProvider.getGasPrice()
+            getGasPrice()
         ])
         nonce = nonce || _nonce
         // const gasPrice = 10000000000
@@ -75,27 +89,27 @@ async function transfer(from: Wallet, to: string, value: number, nonce: number |
 
         })
 
-        await status.wait()
+        waiting && await status.wait()
         // console.log(rs)
         return true
-    } catch (error:any) {
+    } catch (error: any) {
         if ((error.message + "").indexOf("Maximum load exceeded") != -1) {
             console.info("Wait 30s to continue")
             await delay(30000)
         }
-        console.error(error)
+        console.error(error.message)
     }
     return false
 }
-export async function stakes(stakeValue: string, wallets: string, backup: string) {
+export async function stakes(stakeValue: string, wallets: string, backupPath: string) {
     // debugger
     const walletsJson: Wallet[] = JSON.parse(fs.readFileSync(wallets, 'utf8'));
 
     // Load all JSON files in backup folder
-    const backupFiles: Backup[] = fs.readdirSync(backup)
+    const backupFiles: Backup[] = fs.readdirSync(backupPath)
         .filter(file => path.extname(file) === '.json')
         .map(file => {
-            const bk = JSON.parse(fs.readFileSync(path.join(backup, file), 'utf8'))
+            const bk = JSON.parse(fs.readFileSync(path.join(backupPath, file), 'utf8'))
             bk.fileName = file
             return bk
         });
@@ -156,7 +170,7 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
                         const balance = +(wallet.balanceEth || 0)
                         if (balance > 1 && wallet.address != lead_wallet.address) {
                             // if (lst_has_shm.length)
-                           await transfer(wallet, lead_wallet.address, balance - 1)
+                            await transfer(wallet, lead_wallet.address, balance - 1)
                             // else
                             // lst_has_shm.push(wallet)
                         }
@@ -208,9 +222,13 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
 
             } else {
                 // console.log(backup.publicKey, backup.nominator, 'staked')
+                backup.staked = true
+                fs.writeFileSync(path.join(backupPath, backup.fileName), JSON.stringify(backup))
                 const index = walletsJson.findIndex(w => w.address.toLowerCase() == backup.nominator?.toLowerCase())
                 if (index && index > -1) {
+
                     const wallet = walletsJson[index]
+                    wallet.nominee
                     const balance = await getBalanceEth(wallet.address)
                     if (balance > 1 && wallet.address != lead_wallet.address) {
                         transfer(wallet, lead_wallet.address, balance - 1)
@@ -221,6 +239,7 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
                     wl_bar.update(_index, {
                         task: wallet?.address
                     })
+
                 }
                 //     walletsJson.splice(index, 1)
             }
@@ -249,7 +268,7 @@ export async function stakes(stakeValue: string, wallets: string, backup: string
         bk_bar.increment({
             task: backup.fileName
         })
-       
+
         if (walletsJson.length) {
             await DoStake(backup)
         }
@@ -356,7 +375,7 @@ async function unstake(wallet: Wallet, nominee: string) {
             provider
         );
         const [gasPrice, from, nonce] = await Promise.all([
-            walletWithProvider.getGasPrice(),
+            getGasPrice(),
             walletWithProvider.getAddress(),
             walletWithProvider.getTransactionCount()
 
@@ -425,6 +444,72 @@ export async function reward(backupfolder: string) {
         console.log(i.accounts[0].account?.nominator, reward, 'SHM')
     })
     console.log('total', total)
+}
+export async function start(num_of_node: number) {
+    const res = await axios.get('https://ipinfo.io/ip')
+    const APP_IP = res.data
+
+    const list = new Array(num_of_node).fill(1)
+    const BASE_FOLDER = `/backup`
+    const PREFIX_NAME = `shardeum-node-`
+    for await (const index of list) {
+        const name = PREFIX_NAME + (index + 1)
+        const _path = path.join(BASE_FOLDER, name)
+        const secretPath = path.join(_path, `secret.json`)
+        // if(!fs.pathExistsSync(_path))
+        //     fs.mkdirSync(_path)
+        // if(!fs.existsSync(secretPath))
+        //     {}   
+    }
+
+    // exec('export APP_IP='+APP_IP)
+    exec(
+        `node ${path.join(__dirname, '../../../validator/scripts/clean.js')}`,
+        () => {
+            // Exec PM2 to start the shardeum validator
+            pm2.connect(err => {
+                if (err) {
+                    console.error(err);
+                    throw 'Unable to connect to PM2';
+                }
+                pm2.start(
+                    {
+                        script: `${path.join(
+                            __dirname,
+                            '/node/validator/dist/src/index.js'
+                        )}`,
+                        name: 'validator',
+                        //   output: './validator-logs.txt',
+                        cwd: path.join(__dirname, '../'),
+                        autorestart: false, // Prevents the node from restarting if it is stopped by '/stop'
+                        env: {
+                            "SERVERIP": APP_IP,
+                            "APP_IP": APP_IP
+                        }
+                    },
+                    err => {
+                        if (err) console.error(err);
+                        return pm2.disconnect();
+                    }
+                );
+
+            });
+        }
+    );
+}
+export async function make_tx(walletPath: string) {
+    const wallets: Wallet[] = JSON.parse(
+        fs.readFileSync(walletPath, "utf-8")
+    )
+    const gasPrice = await getGasPrice()
+    const length = wallets.length
+    console.log('length',length,'gasPrice',gasPrice)
+    for await (const wallet of wallets) {
+        const index = wallets.indexOf(wallet)
+        const next = wallets[(index + 1) % length]
+        console.log(index,'/',length,wallet.address)
+        await transfer(wallet, next.address, 0.001,null,false)
+    }
 }
 export function registerValidatorCommands(program: Command) {
     program.command('stake_multi')

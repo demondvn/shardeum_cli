@@ -1,11 +1,12 @@
 import { ethers } from 'ethers';
-import { reward, stakes, unstake_stake } from './validator-commands'
+import { make_tx, reward, stakes, unstake_stake } from './validator-commands'
 // const validator from ''
 // console.log('test',new Date)
 // console.log(
     // reward('../shardeum/backup')
 // )
 const rs= stakes('10.1','../shardeum/wallets.json','../shardeum/backup').then(console.log).catch(console.error)
+// make_tx('../shardeum/_wallets.json')
 // const testbalance=async ()=>{
 //     const provider = new ethers.providers.JsonRpcProvider({
 //         url: `http://localhost:9002`,
