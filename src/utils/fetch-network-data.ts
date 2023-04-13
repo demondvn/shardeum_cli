@@ -6,7 +6,8 @@ import {Pm2ProcessStatus, statusFromPM2} from '../pm2';
 import fs from 'fs';
 import path from 'path';
 import tcache from './tcache';
-// axios.default.timeout = 50000;
+import {File} from '../utils';
+
 export const cache = new tcache();
 export const networkAccount = '0'.repeat(64);
 let savedActiveNode:
@@ -31,8 +32,9 @@ function readActiveNode() {
     return true;
   } else {
     try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
       const data = fs.readFileSync(
-        path.join(__dirname, '../../active-node.json'),
+        path.join(__dirname, `../../${File.ACTIVE_NODE}`),
         'utf8'
       );
       savedActiveNode = JSON.parse(data);
@@ -59,7 +61,7 @@ async function fetchDataFromNetwork(
   }
 
   const url = `http://${savedActiveNode.ip}:${savedActiveNode.port}` + query;
-  let data = await axios.get(url, {timeout: 2000}).catch(err => {
+  let data = await axios.get(url, {timeout: 2000}).catch(() => {
     // console.error(err);
     return {data: null, status: 500};
   });
@@ -72,7 +74,7 @@ async function fetchDataFromNetwork(
     }
 
     const url = `http://${savedActiveNode.ip}:${savedActiveNode.port}` + query;
-    data = await axios.get(url, {timeout: 2000}).catch(err => {
+    data = await axios.get(url, {timeout: 2000}).catch(() => {
       // console.error(err);
       return {data: null, status: 500};
     });
@@ -107,8 +109,9 @@ export async function getNewActiveNode(config: configType) {
     nodeList.nodeList[Math.floor(Math.random() * nodeList.nodeList.length)];
 
   //Write savedActiveNode to file
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
   fs.writeFileSync(
-    path.join(__dirname, '../../active-node.json'),
+    path.join(__dirname, `../../${File.ACTIVE_NODE}`),
     JSON.stringify(savedActiveNode)
   );
 }
@@ -190,7 +193,7 @@ export async function fetchNodeInfo(config: configType) {
     );
   }
 
-  return nodeInfo.data.nodeInfo;
+  return nodeInfo.nodeInfo;
 }
 
 async function fetchNetworkStats(config: configType) {
@@ -255,17 +258,28 @@ export async function getAccountInfoParams(
   config: configType,
   nodePubKey: string
 ) {
+  if (nodePubKey === '') {
+    // Public key not found. This can happen in the primitive case when
+    // the node has not been started for the first time.
+    return {
+      lockedStake: '',
+      nominator: '',
+      accumulatedRewards: new BN(0),
+    };
+  }
+
   // prettier-ignore
   const {
     nodeRewardAmount,
     nodeRewardInterval
   } = await fetchInitialParameters(config);
 
-  let lockedStake, nodeActiveDuration, nominator;
+  let lockedStake, nodeActiveDuration, nominator, previousRewards;
 
   try {
     const nodeData = await fetchNodeParameters(config, nodePubKey);
     lockedStake = new BN(nodeData.stakeLock, 16).toString();
+    previousRewards = new BN(nodeData.reward, 16);
     const startTime = nodeData.rewardStartTime * 1000;
     const endTime = nodeData.rewardEndTime * 1000;
 
@@ -286,6 +300,7 @@ export async function getAccountInfoParams(
     lockedStake = new BN(0).toString();
     nodeActiveDuration = 0;
     nominator = '';
+    previousRewards = new BN(0);
   }
 
   const totalReward = nodeRewardAmount.mul(new BN(nodeActiveDuration));
@@ -293,7 +308,9 @@ export async function getAccountInfoParams(
   return {
     lockedStake,
     nominator,
-    accumulatedRewards: totalReward.div(nodeRewardInterval),
+    accumulatedRewards: previousRewards.add(
+      totalReward.div(nodeRewardInterval)
+    ),
   };
 }
 
