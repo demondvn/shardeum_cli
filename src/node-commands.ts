@@ -16,6 +16,8 @@ import {
   fetchValidatorVersions,
   getNodeSettings,
   cache,
+  File,
+  fetchNodeInfo,
 } from './utils';
 import {getPerformanceStatus} from './utils/performance-stats';
 const yaml = require('js-yaml');
@@ -156,7 +158,7 @@ export function registerNodeCommands(program: Command) {
     .description(
       'Show if validator is running or not; also the port and URL to connect to it'
     )
-    .action(() => {
+    .action(async () => {
       pm2.describe('validator', async (err, descriptions) => {
         // PM2 not reachable
         if (err) {
@@ -164,37 +166,33 @@ export function registerNodeCommands(program: Command) {
           return pm2.disconnect();
         }
 
+        let publicKey = '';
+        // Fetch the public key from secrets.json if it exists
+        // eslint-disable-next-line security/detect-non-literal-fs-filename
+        if (fs.existsSync(path.join(__dirname, `../${File.SECRETS}`))) {
+          const secrets = JSON.parse(
+            // eslint-disable-next-line security/detect-non-literal-fs-filename
+            fs
+              .readFileSync(path.join(__dirname, `../${File.SECRETS}`))
+              .toString()
+          );
+          publicKey = secrets.publicKey;
+        }
+
         const [
-          { stakeRequired },
+          {stakeRequired},
           performance,
-          {state, totalTimeValidating, lastRotationIndex, lastActive, nodeInfo},
+          {totalTimeValidating, lastRotationIndex, lastActive},
           {exitMessage, exitStatus},
+          accountInfo,
         ] = await Promise.all([
           fetchStakeParameters(config),
           getPerformanceStatus(),
           fetchNodeProgress().then(getProgressData),
           getExitInformation(),
+          getAccountInfoParams(config, publicKey),
         ]);
         // TODO: Use Promise.allSettled. Need to update nodeJs to 12.9
-
-        let publicKey = '';
-        let lockedStake = '';
-        let nominator = '';
-        let accountInfo;
-
-        // Fetch the public key from secrets.json if it exists
-        if (fs.existsSync(path.join(__dirname, '../secrets.json'))) {
-          const secrets = JSON.parse(
-            fs.readFileSync(path.join(__dirname, '../secrets.json')).toString()
-          );
-          publicKey = secrets.publicKey;
-        }
-
-        if (publicKey) {
-          accountInfo = await getAccountInfoParams(config, publicKey);
-          lockedStake = accountInfo.lockedStake;
-          nominator = accountInfo.nominator;
-        }
 
         if (descriptions.length === 0) {
           // Node process not started
@@ -207,8 +205,8 @@ export function registerNodeCommands(program: Command) {
               stakeRequirement: stakeRequired
                 ? ethers.utils.formatEther(stakeRequired)
                 : '',
-              lockedStake: lockedStake
-                ? ethers.utils.formatEther(lockedStake)
+              lockedStake: accountInfo.lockedStake
+                ? ethers.utils.formatEther(accountInfo.lockedStake)
                 : '',
             })
           );
@@ -221,32 +219,21 @@ export function registerNodeCommands(program: Command) {
         if (status.status !== 'stopped') {
           // Node is started and active
 
-          let accumulatedRewards;
+          const nodeInfo = await fetchNodeInfo(config);
 
-          if (accountInfo) {
-            ({ nominator, accumulatedRewards } = accountInfo);
-          } else {
-            //prettier-ignore
-            ({ nominator, accumulatedRewards } = await getAccountInfoParams(config, publicKey));
-          }
-          const checkPortFn = async () => {
-            try {
-              // const public_ip = await axios.get("https://ipinfo.io/ip")
-              await axios.get(`http://0:${config.server.ip.externalPort}/load`,{
-                timeout:1000
-              })
-              return true
-            } catch (error) {
-              // console.error(error)
-              return false
-            }
-           
+          const lockedStakeStr = accountInfo.lockedStake
+            ? ethers.utils.formatEther(accountInfo.lockedStake)
+            : '';
+          const nodeStatus =
+            nodeInfo.status === null
+              ? lockedStakeStr === '0.0'
+                ? 'need-stake'
+                : 'standby'
+              : nodeInfo.status;
 
-          }
-          const checkPort = await checkPortFn()
           console.log(
             yaml.dump({
-              state: state,
+              state: nodeStatus,
               exitMessage,
               exitStatus,
               totalTimeRunning: status.uptimeInSeconds,
@@ -256,17 +243,14 @@ export function registerNodeCommands(program: Command) {
               stakeRequirement: stakeRequired
                 ? ethers.utils.formatEther(stakeRequired)
                 : '',
-              nominatorAddress: nominator,
+              nominatorAddress: accountInfo.nominator,
               nomineeAddress: publicKey,
               performance,
               currentRewards: ethers.utils.formatEther(
-                accumulatedRewards.toString()
+                accountInfo.accumulatedRewards.toString()
               ),
-              lockedStake: lockedStake
-                ? ethers.utils.formatEther(lockedStake)
-                : '',
+              lockedStake: lockedStakeStr,
               nodeInfo: nodeInfo,
-              checkPort
               // TODO: Add fetching node info when in standby
             })
           );
@@ -284,10 +268,10 @@ export function registerNodeCommands(program: Command) {
             stakeRequirement: stakeRequired
               ? ethers.utils.formatEther(stakeRequired)
               : '',
-            lockedStake: lockedStake
-              ? ethers.utils.formatEther(lockedStake)
+            lockedStake: accountInfo.lockedStake
+              ? ethers.utils.formatEther(accountInfo.lockedStake)
               : '',
-            nominatorAddress: nominator,
+            nominatorAddress: accountInfo.nominator,
             currentRewards: accountInfo
               ? ethers.utils.formatEther(
                   accountInfo.accumulatedRewards.toString()
