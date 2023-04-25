@@ -1,48 +1,36 @@
-import {Pm2ProcessStatus, statusFromPM2} from './pm2';
+import { Pm2ProcessStatus, statusFromPM2 } from './pm2';
 import pm2 from 'pm2';
-import * as yaml from 'js-yaml';
-import {Command} from 'commander';
+import { Command } from 'commander';
 import path from 'path';
-import {exec} from 'child_process';
+import { exec } from 'child_process';
 import merge from 'deepmerge';
-import {defaultConfig} from './config/default-network-config';
+import { defaultConfig } from './config/default-network-config';
 import {defaultNodeConfig, nodeConfigType} from './config/default-node-config';
-import fs, {readFileSync} from 'fs';
-import {ethers} from 'ethers';
+import fs, { readFileSync } from 'fs';
+import { ethers } from 'ethers';
 import {
   fetchEOADetails,
   getNetworkParams,
   fetchStakeParameters,
   getAccountInfoParams,
-  getPerformanceStatus,
-  getLatestCliVersion,
-  isGuiInstalled,
-  getInstalledGuiVersion,
-  getLatestGuiVersion,
-  fetchNodeProgress,
-  getExitInformation,
-  getProgressData,
-  isValidatorInstalled,
-  getInstalledValidatorVersion,
   fetchValidatorVersions,
   getNodeSettings,
   cache,
   File,
   fetchNodeInfo,
 } from './utils';
-import * as readline from 'readline';
-
-type VersionStats = {
-  runningCliVersion: string;
-  minimumCliVersion: string;
-  latestCliVersion: string;
-  minShardeumVersion: string;
-  activeShardeumVersion: string;
-  minimumGuiVersion?: string;
-  latestGuiVersion?: string;
-  runningGuiVersion?: string | undefined;
-  runnningValidatorVersion?: string | undefined;
-};
+import {getPerformanceStatus} from './utils/performance-stats';
+const yaml = require('js-yaml');
+import {
+  getInstalledGuiVersion,
+  getInstalledValidatorVersion,
+  getLatestCliVersion,
+  getLatestGuiVersion,
+  isGuiInstalled,
+  isValidatorInstalled,
+} from './utils/project-data';
+import {fetchNodeProgress, getExitInformation, getProgressData} from './utils/fetch-node-data';
+import axios from 'axios';
 
 let config = defaultConfig;
 let nodeConfig: nodeConfigType = defaultNodeConfig;
@@ -51,31 +39,31 @@ let rpcServer = {
   url: 'https://sphinx.shardeum.org',
 };
 
-// eslint-disable-next-line security/detect-non-literal-fs-filename
-if (fs.existsSync(path.join(__dirname, `../${File.CONFIG}`))) {
+const stateMap: {[id: string]: string} = {
+  null: 'standby',
+  syncing: 'syncing',
+  active: 'active',
+};
+
+if (fs.existsSync(path.join(__dirname, '../config.json'))) {
   const fileConfig = JSON.parse(
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
-    fs.readFileSync(path.join(__dirname, `../${File.CONFIG}`)).toString()
+    fs.readFileSync(path.join(__dirname, '../config.json')).toString()
   );
-  config = merge(config, fileConfig, {arrayMerge: (target, source) => source});
+  config = merge(config, fileConfig, { arrayMerge: (target, source) => source });
 }
 
-// eslint-disable-next-line security/detect-non-literal-fs-filename
-if (fs.existsSync(path.join(__dirname, `../${File.NODE_CONFIG}`))) {
+if (fs.existsSync(path.join(__dirname, '../nodeConfig.json'))) {
   const fileConfig = JSON.parse(
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
-    fs.readFileSync(path.join(__dirname, `../${File.NODE_CONFIG}`)).toString()
+    fs.readFileSync(path.join(__dirname, '../nodeConfig.json')).toString()
   );
   nodeConfig = merge(nodeConfig, fileConfig, {
     arrayMerge: (target, source) => source,
   });
 }
 
-// eslint-disable-next-line security/detect-non-literal-fs-filename
-if (fs.existsSync(path.join(__dirname, `../${File.RPC_SERVER}`))) {
+if (fs.existsSync(path.join(__dirname, '../rpc-server.json'))) {
   const fileConfig = JSON.parse(
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
-    fs.readFileSync(path.join(__dirname, `../${File.RPC_SERVER}`)).toString()
+    fs.readFileSync(path.join(__dirname, '../rpc-server.json')).toString()
   );
   rpcServer = merge(rpcServer, fileConfig, {
     arrayMerge: (target, source) => source,
@@ -99,7 +87,7 @@ if (process.env.APP_SEEDLIST) {
         },
       },
     },
-    {arrayMerge: (target, source) => source}
+    { arrayMerge: (target, source) => source }
   );
 }
 
@@ -130,7 +118,7 @@ if (process.env.APP_MONITOR) {
         },
       },
     },
-    {arrayMerge: (target, source) => source}
+    { arrayMerge: (target, source) => source }
   );
 }
 
@@ -145,7 +133,7 @@ if (process.env.EXT_IP) {
         },
       },
     },
-    {arrayMerge: (target, source) => source}
+    { arrayMerge: (target, source) => source }
   );
 }
 
@@ -188,15 +176,13 @@ const dashboardPackageJson = JSON.parse(
   readFileSync(path.join(__dirname, '../../package.json'), 'utf8')
 );
 
-// eslint-disable-next-line security/detect-non-literal-fs-filename
 fs.writeFileSync(
-  path.join(__dirname, `../${File.CONFIG}`),
+  path.join(__dirname, '../config.json'),
   JSON.stringify(config, undefined, 2)
 );
 
-// eslint-disable-next-line security/detect-non-literal-fs-filename
 fs.writeFileSync(
-  path.join(__dirname, `../${File.NODE_CONFIG}`),
+  path.join(__dirname, '../nodeConfig.json'),
   JSON.stringify(nodeConfig, undefined, 2)
 );
 
@@ -364,9 +350,11 @@ export function registerNodeCommands(program: Command) {
   program
     .command('start')
     .description('Starts the validator')
-    .action(() => {
+    .action(async () => {
       // Run the validators clean script
-
+      const res =await axios.get('https://ipinfo.io/ip')
+      const APP_IP = res.data
+      exec('export APP_IP='+APP_IP)
       exec(
         `node ${path.join(__dirname, '../../../validator/scripts/clean.js')}`,
         () => {
@@ -377,30 +365,37 @@ export function registerNodeCommands(program: Command) {
               throw 'Unable to connect to PM2';
             }
             pm2.start(
-              path.join(__dirname, `../../${File.ENVIRONMENT_CONFIG}`),
+              {
+                script: `${path.join(
+                  __dirname,
+                  '../../../validator/dist/src/index.js'
+                )}`,
+                name: 'validator',
+                output: './validator-logs.txt',
+                cwd: path.join(__dirname, '../'),
+                autorestart: false, // Prevents the node from restarting if it is stopped by '/stop'
+                env:{
+                  "SERVERIP":res.data,
+                  APP_IP:res.data
+                }
+              },
               err => {
                 if (err) console.error(err);
                 return pm2.disconnect();
               }
             );
+
           });
         }
       );
     });
-
-  function stopNode() {
-    pm2.stop('validator', err => {
-      if (err) console.error(err);
-      return pm2.disconnect();
-    });
-  }
 
   program
     .command('stop')
     .description('Stops the validator')
     .option(
       '-f, --force',
-      'stops the node without prompting for confirmation even if it is participating and could get slashed'
+      'stops the node even if it is participating and could get slashed'
     )
     .action(options => {
       // Exec PM2 to stop the shardeum validator
@@ -410,36 +405,13 @@ export function registerNodeCommands(program: Command) {
           throw 'Unable to connect to PM2';
         }
 
-        pm2.describe('validator', async (err, descriptions) => {
-          if (descriptions.length === 0) {
-            console.error('Node is not running');
-            return pm2.disconnect();
-          }
+        if (!options.force) {
+          //TODO check to make sure the node is not participating
+        }
 
-          const description = descriptions[0];
-          const status: Pm2ProcessStatus = statusFromPM2(description);
-          const {state} = await fetchNodeProgress().then(getProgressData);
-          if (status.status !== 'stopped' && state !== 'standby') {
-            if (!options.force) {
-              const rl = readline.createInterface({
-                input: process.stdin,
-                output: process.stdout,
-              });
-
-              rl.question(
-                'The node is active and stopping it could result in losing the stake amount. ' +
-                  'Confirm if you would like to force the node to stop (y/n): ',
-                answer => {
-                  rl.close();
-                  if (answer.toLowerCase() === 'y') {
-                    return stopNode();
-                  }
-                  return pm2.disconnect();
-                }
-              );
-            }
-          }
-          return stopNode();
+        pm2.stop('validator', err => {
+          if (err) console.error(err);
+          return pm2.disconnect();
         });
       });
     });
@@ -454,15 +426,13 @@ export function registerNodeCommands(program: Command) {
       //TODO should we handle consecutive stakes?
 
       // Fetch the public key from secrets.json
-      // eslint-disable-next-line security/detect-non-literal-fs-filename
-      if (!fs.existsSync(path.join(__dirname, `../${File.SECRETS}`))) {
+      if (!fs.existsSync(path.join(__dirname, '../secrets.json'))) {
         console.error('Please start the node once before staking');
         return;
       }
 
       const secrets = JSON.parse(
-        // eslint-disable-next-line security/detect-non-literal-fs-filename
-        fs.readFileSync(path.join(__dirname, `../${File.SECRETS}`)).toString()
+        fs.readFileSync(path.join(__dirname, '../secrets.json')).toString()
       );
 
       if (secrets.publicKey === null) {
@@ -531,11 +501,11 @@ export function registerNodeCommands(program: Command) {
           nonce,
         };
 
-        const {hash, data, wait} = await walletWithProvider.sendTransaction(
+        const { hash, data, wait } = await walletWithProvider.sendTransaction(
           txDetails
         );
 
-        console.log('TX RECEIPT: ', {hash, data});
+        console.log('TX RECEIPT: ', { hash, data });
         const txConfirmation = await wait();
         console.log('TX CONFRIMED: ', txConfirmation);
       } catch (error) {
@@ -609,11 +579,11 @@ export function registerNodeCommands(program: Command) {
         };
         console.log(txDetails);
 
-        const {hash, data, wait} = await walletWithProvider.sendTransaction(
+        const { hash, data, wait } = await walletWithProvider.sendTransaction(
           txDetails
         );
 
-        console.log('TX RECEIPT: ', {hash, data});
+        console.log('TX RECEIPT: ', { hash, data });
         const txConfirmation = await wait();
         console.log('TX CONFRIMED: ', txConfirmation);
       } catch (error) {
@@ -627,7 +597,7 @@ export function registerNodeCommands(program: Command) {
     .action(() => {
       exec(
         'sh update.sh',
-        {cwd: path.join(__dirname, '../..')},
+        { cwd: path.join(__dirname, '../..') },
         (error, stdout, stderr) => {
           console.log(stdout);
           console.log(stderr);
@@ -639,7 +609,7 @@ export function registerNodeCommands(program: Command) {
 
       exec(
         'sh update.sh',
-        {cwd: path.join(__dirname, '../../../gui')},
+        { cwd: path.join(__dirname, '../../../gui') },
         (error, stdout, stderr) => {
           console.log(stdout);
           console.log(stderr);
@@ -658,7 +628,7 @@ export function registerNodeCommands(program: Command) {
     .action(async () => {
       const validatorVersions = await fetchValidatorVersions(config);
 
-      let versions: VersionStats = {
+      let versions: any = {
         runningCliVersion: dashboardPackageJson.version,
         minimumCliVersion: '0.1.0', //TODO query from some official online source
         latestCliVersion: await getLatestCliVersion(),
@@ -716,69 +686,65 @@ export function registerNodeCommands(program: Command) {
     .command('set')
     .description('command to set various config parameters');
 
-  // setCommand
-  //   .command('external_port')
-  //   .arguments('<port>')
-  //   .description('Set the external port for the validator')
-  //   .action(port => {
-  //     config.server.ip.externalPort = parseInt(port);
-  //     // eslint-disable-next-line security/detect-non-literal-fs-filename
-  //     fs.writeFile(
-  //       path.join(__dirname, `../${File.CONFIG}`),
-  //       JSON.stringify(config, undefined, 2),
-  //       err => {
-  //         if (err) console.error(err);
-  //       }
-  //     );
-  //   });
+  setCommand
+    .command('external_port')
+    .arguments('<port>')
+    .description('Set the external port for the validator')
+    .action(port => {
+      config.server.ip.externalPort = parseInt(port);
+      fs.writeFile(
+        path.join(__dirname, '../config.json'),
+        JSON.stringify(config, undefined, 2),
+        err => {
+          if (err) console.error(err);
+        }
+      );
+    });
 
-  // setCommand
-  //   .command('internal_port')
-  //   .arguments('<port>')
-  //   .description('Set the internal port for the validator')
-  //   .action(port => {
-  //     config.server.ip.internalPort = parseInt(port);
-  //     // eslint-disable-next-line security/detect-non-literal-fs-filename
-  //     fs.writeFile(
-  //       path.join(__dirname, `../${File.CONFIG}`),
-  //       JSON.stringify(config, undefined, 2),
-  //       err => {
-  //         if (err) console.error(err);
-  //       }
-  //     );
-  //   });
+  setCommand
+    .command('internal_port')
+    .arguments('<port>')
+    .description('Set the internal port for the validator')
+    .action(port => {
+      config.server.ip.internalPort = parseInt(port);
+      fs.writeFile(
+        path.join(__dirname, '../config.json'),
+        JSON.stringify(config, undefined, 2),
+        err => {
+          if (err) console.error(err);
+        }
+      );
+    });
 
-  // setCommand
-  //   .command('external_ip')
-  //   .arguments('<ip>')
-  //   .description('Set the external ip for the validator')
-  //   .action(ip => {
-  //     config.server.ip.externalIp = ip;
-  //     // eslint-disable-next-line security/detect-non-literal-fs-filename
-  //     fs.writeFile(
-  //       path.join(__dirname, `../${File.CONFIG}`),
-  //       JSON.stringify(config, undefined, 2),
-  //       err => {
-  //         if (err) console.error(err);
-  //       }
-  //     );
-  //   });
+  setCommand
+    .command('external_ip')
+    .arguments('<ip>')
+    .description('Set the external ip for the validator')
+    .action(ip => {
+      config.server.ip.externalIp = ip;
+      fs.writeFile(
+        path.join(__dirname, '../config.json'),
+        JSON.stringify(config, undefined, 2),
+        err => {
+          if (err) console.error(err);
+        }
+      );
+    });
 
-  // setCommand
-  //   .command('internal_ip')
-  //   .arguments('<ip>')
-  //   .description('Set the internal ip for the validator')
-  //   .action(ip => {
-  //     config.server.ip.internalIp = ip;
-  //     // eslint-disable-next-line security/detect-non-literal-fs-filename
-  //     fs.writeFile(
-  //       path.join(__dirname, `../${File.CONFIG}`),
-  //       JSON.stringify(config, undefined, 2),
-  //       err => {
-  //         if (err) console.error(err);
-  //       }
-  //     );
-  //   });
+  setCommand
+    .command('internal_ip')
+    .arguments('<ip>')
+    .description('Set the internal ip for the validator')
+    .action(ip => {
+      config.server.ip.internalIp = ip;
+      fs.writeFile(
+        path.join(__dirname, '../config.json'),
+        JSON.stringify(config, undefined, 2),
+        err => {
+          if (err) console.error(err);
+        }
+      );
+    });
 
   setCommand
     .command('rpc_url')
@@ -786,9 +752,8 @@ export function registerNodeCommands(program: Command) {
     .description("Set the RPC server's URL")
     .action(url => {
       rpcServer.url = url;
-      // eslint-disable-next-line security/detect-non-literal-fs-filename
       fs.writeFile(
-        path.join(__dirname, `../${File.RPC_SERVER}`),
+        path.join(__dirname, '../rpc-server.json'),
         JSON.stringify(rpcServer, undefined, 2),
         err => {
           if (err) console.error(err);
@@ -809,9 +774,8 @@ export function registerNodeCommands(program: Command) {
         return;
       }
       nodeConfig.autoRestart = input === 'true';
-      // eslint-disable-next-line security/detect-non-literal-fs-filename
       fs.writeFile(
-        path.join(__dirname, `../${File.NODE_CONFIG}`),
+        path.join(__dirname, '../nodeConfig.json'),
         JSON.stringify(nodeConfig, undefined, 2),
         err => {
           if (err) console.error(err);
