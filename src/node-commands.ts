@@ -18,6 +18,7 @@ import {
   cache,
   File,
   fetchNodeInfo,
+  getUserInput,
 } from './utils';
 import {getPerformanceStatus} from './utils/performance-stats';
 const yaml = require('js-yaml');
@@ -31,6 +32,7 @@ import {
 } from './utils/project-data';
 import {fetchNodeProgress, getExitInformation, getProgressData} from './utils/fetch-node-data';
 import axios from 'axios';
+import {isValidPrivate} from 'ethereumjs-util';
 
 let config = defaultConfig;
 let nodeConfig: nodeConfigType = defaultNodeConfig;
@@ -129,7 +131,9 @@ if (process.env.EXT_IP) {
       server: {
         ip: {
           externalIp:
-            process.env.EXT_IP === 'auto' ? '127.0.0.1' : process.env.EXT_IP,
+            process.env.EXT_IP === 'auto'
+              ? process.env.SERVERIP
+              : process.env.EXT_IP,
         },
       },
     },
@@ -144,7 +148,9 @@ if (process.env.INT_IP) {
       server: {
         ip: {
           internalIp:
-            process.env.INT_IP === 'auto' ? '127.0.0.1' : process.env.EXT_IP,
+            process.env.INT_IP === 'auto'
+              ? process.env.SERVERIP
+              : process.env.INT_IP,
         },
       },
     },
@@ -440,19 +446,19 @@ export function registerNodeCommands(program: Command) {
         return;
       }
 
-      if (!process.env.PRIV_KEY) {
-        console.error(
-          'Please set private key as PRIV_KEY environment variable'
-        );
-        return;
+      // Take input from user for PRIVATE KEY
+      let privateKey = await getUserInput('Please enter your private key: ');
+      while (
+        privateKey.length !== 64 ||
+        !isValidPrivate(Buffer.from(privateKey, 'hex'))
+      ) {
+        console.log('Invalid private key entered.');
+        privateKey = await getUserInput('Please enter your private key: ');
       }
 
       const provider = new ethers.providers.JsonRpcProvider(rpcServer.url);
 
-      const walletWithProvider = new ethers.Wallet(
-        process.env.PRIV_KEY,
-        provider
-      );
+      const walletWithProvider = new ethers.Wallet(privateKey, provider);
 
       const [{stakeRequired}, eoaData] = await Promise.all([
         fetchStakeParameters(config),
@@ -523,18 +529,21 @@ export function registerNodeCommands(program: Command) {
     .action(async options => {
       //TODO should we handle partial unstakes?
 
-      if (!process.env.PRIV_KEY) {
-        console.error(
-          'Please set private key as PRIV_KEY environment variable'
-        );
-        return;
+      // Take input from user for PRIVATE KEY
+      let privateKey = await getUserInput('Please enter your private key: ');
+      while (
+        privateKey.length !== 64 ||
+        !isValidPrivate(Buffer.from(privateKey, 'hex'))
+      ) {
+        console.log('Invalid private key entered.');
+        privateKey = await getUserInput('Please enter your private key: ');
       }
 
       try {
         const provider = new ethers.providers.JsonRpcProvider(rpcServer.url);
 
         const walletWithProvider = new ethers.Wallet(
-          process.env.PRIV_KEY,
+          privateKey,
           provider
         );
 
